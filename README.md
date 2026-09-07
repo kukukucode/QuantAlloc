@@ -11,6 +11,10 @@ QuantAllocは、日本株で構成されたポートフォリオをPythonで定�
 - 各銘柄の日次リターンから相関行列を計算
 - 日次共分散行列を252取引日で年率化
 - HHIとEffective Number of Assetsで配分の集中度を確認
+- 各銘柄のRisk Contributionを計算
+- Minimum Variance Portfolioを計算
+- Maximum Sharpe Portfolioを計算
+- Efficient Frontierを計算
 
 比較する指標:
 
@@ -25,7 +29,18 @@ QuantAllocは、日本株で構成されたポートフォリオをPythonで定�
 - NumPy
 - pandas
 - yfinance
+- SciPy
 - pytest
+
+## Expected Returnの前提
+
+最適化で使用する期待リターンは、過去の日次平均リターンを252取引日で年率化したhistorical mean returnです。将来のリターンを予測するものではありません。
+
+最適化では次の制約を使用します。
+
+- 空売りなし
+- レバレッジなし
+- 配分合計100%
 
 ## サンプル構成
 
@@ -48,7 +63,7 @@ Benchmark
 
 ## Current Status
 
-v0.3を開発中です。ポートフォリオとTOPIXの比較に加え、相関・共分散と配分集中度を分析できます。
+現在はv0.5です。基本指標、TOPIX比較、分散分析、Risk Contribution、古典的なMean-Variance Optimizationを実行できます。
 
 ## 実行方法
 

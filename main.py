@@ -13,11 +13,19 @@ from src.diversification import (
     effective_number_of_assets,
     hhi,
 )
+from src.optimization import (
+    efficient_frontier,
+    expected_returns,
+    maximum_sharpe_weights,
+    minimum_variance_weights,
+    portfolio_performance,
+)
 from src.portfolio import (
     calculate_asset_returns,
     calculate_portfolio_returns,
     validate_weights,
 )
+from src.risk import risk_contribution
 
 WEIGHTS = {
     "7203.T": 0.10,
@@ -69,13 +77,14 @@ def print_comparison(
 def print_diversification_analysis(
     asset_returns: pd.DataFrame,
     weights: pd.Series,
+    covariance: pd.DataFrame,
 ) -> None:
     """Print correlation, covariance, and concentration measures."""
     print("\nCorrelation Matrix")
     print(correlation_matrix(asset_returns).round(2).to_string())
 
     print("\nAnnualized Covariance Matrix")
-    print(covariance_matrix(asset_returns).round(4).to_string())
+    print(covariance.round(4).to_string())
 
     print("\nConcentration")
     print(f"HHI                        : {hhi(weights):.4f}")
@@ -83,6 +92,69 @@ def print_diversification_analysis(
         "Effective Number of Assets : "
         f"{effective_number_of_assets(weights):.2f}"
     )
+
+    contributions = risk_contribution(weights, covariance)
+    risk_table = contributions[["weight", "risk_contribution_pct"]].copy()
+    risk_table.columns = ["Weight", "Risk Contribution"]
+    print("\nRisk Contribution")
+    print(risk_table.map(lambda value: f"{value:.2%}").to_string())
+
+
+def print_optimization_analysis(
+    current_weights: pd.Series,
+    minimum_weights: pd.Series,
+    maximum_sharpe: pd.Series,
+    historical_returns: pd.Series,
+    covariance: pd.DataFrame,
+    frontier: pd.DataFrame,
+) -> None:
+    """Print optimized allocations, performance, and efficient frontier."""
+    allocations = pd.DataFrame(
+        {
+            "Current": current_weights,
+            "Minimum Variance": minimum_weights,
+            "Maximum Sharpe": maximum_sharpe,
+        }
+    )
+    print("\nPortfolio Weights")
+    print(allocations.map(lambda value: f"{value:.2%}").to_string())
+
+    portfolios = {
+        "Current": current_weights,
+        "Minimum Variance": minimum_weights,
+        "Maximum Sharpe": maximum_sharpe,
+    }
+    performance = {
+        name: portfolio_performance(
+            portfolio_weights,
+            historical_returns,
+            covariance,
+        )
+        for name, portfolio_weights in portfolios.items()
+    }
+
+    print("\nExpected Performance")
+    print(f"{'':<18}{'Current':>14}{'Min Variance':>16}{'Max Sharpe':>14}")
+    rows = (
+        ("Return", "return", True),
+        ("Volatility", "volatility", True),
+        ("Sharpe Ratio", "sharpe", False),
+    )
+    for label, key, is_percentage in rows:
+        values = [performance[name][key] for name in portfolios]
+        formatted = [
+            f"{value:.2%}" if is_percentage else f"{value:.2f}"
+            for value in values
+        ]
+        print(
+            f"{label:<18}{formatted[0]:>14}"
+            f"{formatted[1]:>16}{formatted[2]:>14}"
+        )
+
+    frontier_table = frontier.copy()
+    frontier_table.columns = ["Return", "Volatility"]
+    print("\nEfficient Frontier")
+    print(frontier_table.map(lambda value: f"{value:.2%}").to_string(index=False))
 
 
 def main() -> None:
@@ -106,8 +178,33 @@ def main() -> None:
         portfolio_returns,
         benchmark_returns,
     )
+    annualized_covariance = covariance_matrix(asset_returns)
+    historical_returns = expected_returns(asset_returns)
+    minimum_weights = minimum_variance_weights(annualized_covariance)
+    maximum_sharpe = maximum_sharpe_weights(
+        historical_returns,
+        annualized_covariance,
+    )
+    frontier = efficient_frontier(
+        historical_returns,
+        annualized_covariance,
+        points=10,
+    )
+
     print_comparison(result)
-    print_diversification_analysis(asset_returns, weights)
+    print_diversification_analysis(
+        asset_returns,
+        weights,
+        annualized_covariance,
+    )
+    print_optimization_analysis(
+        weights,
+        minimum_weights,
+        maximum_sharpe,
+        historical_returns,
+        annualized_covariance,
+        frontier,
+    )
 
 
 if __name__ == "__main__":
