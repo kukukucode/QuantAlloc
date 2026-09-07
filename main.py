@@ -1,22 +1,37 @@
 """Run the QuantAlloc portfolio and benchmark comparison."""
 
+import pandas as pd
+
 from src.benchmark import (
     calculate_benchmark_returns,
     compare_with_benchmark,
 )
 from src.data_provider import fetch_prices
+from src.diversification import (
+    correlation_matrix,
+    covariance_matrix,
+    effective_number_of_assets,
+    hhi,
+)
 from src.portfolio import (
     calculate_asset_returns,
     calculate_portfolio_returns,
     validate_weights,
 )
 
-TICKERS = ["7203.T", "6758.T", "8306.T"]
 WEIGHTS = {
-    "7203.T": 0.40,
-    "6758.T": 0.30,
-    "8306.T": 0.30,
+    "7203.T": 0.10,
+    "6758.T": 0.10,
+    "8306.T": 0.10,
+    "9432.T": 0.10,
+    "8058.T": 0.10,
+    "7974.T": 0.10,
+    "3003.T": 0.10,
+    "6501.T": 0.10,
+    "9983.T": 0.10,
+    "4661.T": 0.10,
 }
+TICKERS = list(WEIGHTS)
 BENCHMARK_TICKER = "1306.T"
 START_DATE = "2021-01-01"
 END_DATE = "2026-01-01"
@@ -51,6 +66,25 @@ def print_comparison(
         print(f"{label:<18}{portfolio_text:>14}{benchmark_text:>14}")
 
 
+def print_diversification_analysis(
+    asset_returns: pd.DataFrame,
+    weights: pd.Series,
+) -> None:
+    """Print correlation, covariance, and concentration measures."""
+    print("\nCorrelation Matrix")
+    print(correlation_matrix(asset_returns).round(2).to_string())
+
+    print("\nAnnualized Covariance Matrix")
+    print(covariance_matrix(asset_returns).round(4).to_string())
+
+    print("\nConcentration")
+    print(f"HHI                        : {hhi(weights):.4f}")
+    print(
+        "Effective Number of Assets : "
+        f"{effective_number_of_assets(weights):.2f}"
+    )
+
+
 def main() -> None:
     """Compare the example portfolio with the TOPIX benchmark."""
     prices = fetch_prices(TICKERS, START_DATE, END_DATE)
@@ -73,6 +107,7 @@ def main() -> None:
         benchmark_returns,
     )
     print_comparison(result)
+    print_diversification_analysis(asset_returns, weights)
 
 
 if __name__ == "__main__":
