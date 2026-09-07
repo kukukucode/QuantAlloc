@@ -17,6 +17,8 @@ QuantAllocは、日本株で構成されたポートフォリオをPythonで定�
 - Efficient Frontierを計算
 - 3戦略をrolling walk-forward方式でバックテスト
 - OOSリターン、weight履歴、学習・評価期間を保存
+- 全戦略とTOPIXを共通OOS日付に揃えて公平に比較
+- OOS Strategy Comparisonを1つの表として出力
 
 比較する指標:
 
@@ -84,7 +86,7 @@ Benchmark
 
 ## Current Status
 
-現在はv0.6です。基本指標、TOPIX比較、分散分析、Risk Contribution、Mean-Variance Optimization、walk-forward backtestを実行できます。
+現在はv0.7です。walk-forwardで得た3戦略とTOPIXを同じOOS期間に揃え、4つの指標で比較できます。
 
 ## 実行方法
 

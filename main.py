@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from src.backtest import BacktestResult, walk_forward_backtest
+from src.backtest import walk_forward_backtest
 from src.benchmark import (
     calculate_benchmark_returns,
     compare_with_benchmark,
@@ -14,18 +14,13 @@ from src.diversification import (
     effective_number_of_assets,
     hhi,
 )
+from src.evaluation import compare_strategies
 from src.optimization import (
     efficient_frontier,
     expected_returns,
     maximum_sharpe_weights,
     minimum_variance_weights,
     portfolio_performance,
-)
-from src.metrics import (
-    annualized_volatility,
-    cagr,
-    max_drawdown,
-    sharpe_ratio,
 )
 from src.portfolio import (
     calculate_asset_returns,
@@ -164,40 +159,16 @@ def print_optimization_analysis(
     print(frontier_table.map(lambda value: f"{value:.2%}").to_string(index=False))
 
 
-def print_backtest_performance(
-    results: dict[str, BacktestResult],
-    benchmark_returns: pd.Series,
+def print_strategy_comparison(
+    comparison: pd.DataFrame,
 ) -> None:
-    """Print out-of-sample strategy performance against TOPIX."""
-    first_result = next(iter(results.values()))
-    oos_index = first_result.returns.index
-    benchmark_oos = benchmark_returns.reindex(oos_index)
-    if benchmark_oos.isna().any():
-        raise ValueError("benchmark is missing one or more OOS return dates")
-    benchmark_oos.name = "TOPIX"
-
-    series_by_name = {
-        "Equal Weight": results["equal_weight"].returns,
-        "Minimum Variance": results["minimum_variance"].returns,
-        "Maximum Sharpe": results["maximum_sharpe"].returns,
-        "TOPIX": benchmark_oos,
-    }
-    metrics = {
-        name: {
-            "cagr": cagr(returns),
-            "volatility": annualized_volatility(returns),
-            "sharpe": sharpe_ratio(returns),
-            "max_drawdown": max_drawdown(returns),
-        }
-        for name, returns in series_by_name.items()
-    }
-
-    print("\nOut-of-Sample Performance")
+    """Print an aligned out-of-sample strategy comparison."""
+    print("\nOut-of-Sample Strategy Comparison")
     print(
         f"{'Strategy':<20}{'CAGR':>10}{'Vol':>10}"
         f"{'Sharpe':>10}{'MDD':>10}"
     )
-    for name, values in metrics.items():
+    for name, values in comparison.iterrows():
         print(
             f"{name:<20}{values['cagr']:>9.2%}"
             f"{values['volatility']:>9.2%}"
@@ -205,11 +176,10 @@ def print_backtest_performance(
             f"{values['max_drawdown']:>9.2%}"
         )
 
-    print(
-        "\nBacktest windows: "
-        f"{len(first_result.periods)} | "
-        f"OOS observations: {len(oos_index)}"
-    )
+    start_date = comparison.attrs["start_date"].date()
+    end_date = comparison.attrs["end_date"].date()
+    print(f"\nOOS Period: {start_date} -> {end_date}")
+    print(f"Observations: {comparison.attrs['observations']}")
 
 
 def main() -> None:
@@ -253,6 +223,16 @@ def main() -> None:
             "maximum_sharpe",
         )
     }
+    comparison = compare_strategies(
+        {
+            "Equal Weight": backtest_results["equal_weight"].returns,
+            "Minimum Variance": backtest_results[
+                "minimum_variance"
+            ].returns,
+            "Maximum Sharpe": backtest_results["maximum_sharpe"].returns,
+            "TOPIX": benchmark_returns,
+        }
+    )
 
     print_comparison(result)
     print_diversification_analysis(
@@ -268,7 +248,7 @@ def main() -> None:
         annualized_covariance,
         frontier,
     )
-    print_backtest_performance(backtest_results, benchmark_returns)
+    print_strategy_comparison(comparison)
 
 
 if __name__ == "__main__":
