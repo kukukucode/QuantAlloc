@@ -15,6 +15,8 @@ QuantAllocは、日本株で構成されたポートフォリオをPythonで定�
 - Minimum Variance Portfolioを計算
 - Maximum Sharpe Portfolioを計算
 - Efficient Frontierを計算
+- 3戦略をrolling walk-forward方式でバックテスト
+- OOSリターン、weight履歴、学習・評価期間を保存
 
 比較する指標:
 
@@ -42,6 +44,25 @@ QuantAllocは、日本株で構成されたポートフォリオをPythonで定�
 - レバレッジなし
 - 配分合計100%
 
+## Walk-Forward Backtest
+
+過去データだけでweightを決め、その後の未知期間で運用成績を評価します。
+
+```text
+Estimation Window : 504 trading days
+Holding Period    : 63 trading days
+Window Type       : Rolling
+Strategies        : Equal Weight
+                    Minimum Variance
+                    Maximum Sharpe
+Risk-Free Rate    : 0%
+Short Selling     : No
+Leverage          : No
+Transaction Cost  : No
+```
+
+完全な63日OOS windowだけを採用し、同じOOS日付のTOPIXと比較します。
+
 ## サンプル構成
 
 ```text
@@ -63,7 +84,7 @@ Benchmark
 
 ## Current Status
 
-現在はv0.5です。基本指標、TOPIX比較、分散分析、Risk Contribution、古典的なMean-Variance Optimizationを実行できます。
+現在はv0.6です。基本指標、TOPIX比較、分散分析、Risk Contribution、Mean-Variance Optimization、walk-forward backtestを実行できます。
 
 ## 実行方法
 

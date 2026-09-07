@@ -2,6 +2,7 @@
 
 import pandas as pd
 
+from src.backtest import BacktestResult, walk_forward_backtest
 from src.benchmark import (
     calculate_benchmark_returns,
     compare_with_benchmark,
@@ -19,6 +20,12 @@ from src.optimization import (
     maximum_sharpe_weights,
     minimum_variance_weights,
     portfolio_performance,
+)
+from src.metrics import (
+    annualized_volatility,
+    cagr,
+    max_drawdown,
+    sharpe_ratio,
 )
 from src.portfolio import (
     calculate_asset_returns,
@@ -157,6 +164,54 @@ def print_optimization_analysis(
     print(frontier_table.map(lambda value: f"{value:.2%}").to_string(index=False))
 
 
+def print_backtest_performance(
+    results: dict[str, BacktestResult],
+    benchmark_returns: pd.Series,
+) -> None:
+    """Print out-of-sample strategy performance against TOPIX."""
+    first_result = next(iter(results.values()))
+    oos_index = first_result.returns.index
+    benchmark_oos = benchmark_returns.reindex(oos_index)
+    if benchmark_oos.isna().any():
+        raise ValueError("benchmark is missing one or more OOS return dates")
+    benchmark_oos.name = "TOPIX"
+
+    series_by_name = {
+        "Equal Weight": results["equal_weight"].returns,
+        "Minimum Variance": results["minimum_variance"].returns,
+        "Maximum Sharpe": results["maximum_sharpe"].returns,
+        "TOPIX": benchmark_oos,
+    }
+    metrics = {
+        name: {
+            "cagr": cagr(returns),
+            "volatility": annualized_volatility(returns),
+            "sharpe": sharpe_ratio(returns),
+            "max_drawdown": max_drawdown(returns),
+        }
+        for name, returns in series_by_name.items()
+    }
+
+    print("\nOut-of-Sample Performance")
+    print(
+        f"{'Strategy':<20}{'CAGR':>10}{'Vol':>10}"
+        f"{'Sharpe':>10}{'MDD':>10}"
+    )
+    for name, values in metrics.items():
+        print(
+            f"{name:<20}{values['cagr']:>9.2%}"
+            f"{values['volatility']:>9.2%}"
+            f"{values['sharpe']:>10.2f}"
+            f"{values['max_drawdown']:>9.2%}"
+        )
+
+    print(
+        "\nBacktest windows: "
+        f"{len(first_result.periods)} | "
+        f"OOS observations: {len(oos_index)}"
+    )
+
+
 def main() -> None:
     """Compare the example portfolio with the TOPIX benchmark."""
     prices = fetch_prices(TICKERS, START_DATE, END_DATE)
@@ -190,6 +245,14 @@ def main() -> None:
         annualized_covariance,
         points=10,
     )
+    backtest_results = {
+        strategy: walk_forward_backtest(asset_returns, strategy)
+        for strategy in (
+            "equal_weight",
+            "minimum_variance",
+            "maximum_sharpe",
+        )
+    }
 
     print_comparison(result)
     print_diversification_analysis(
@@ -205,6 +268,7 @@ def main() -> None:
         annualized_covariance,
         frontier,
     )
+    print_backtest_performance(backtest_results, benchmark_returns)
 
 
 if __name__ == "__main__":
