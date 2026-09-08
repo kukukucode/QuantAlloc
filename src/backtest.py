@@ -25,11 +25,25 @@ VALID_STRATEGIES = frozenset(
 
 @dataclass(frozen=True)
 class BacktestResult:
-    """Out-of-sample returns, rebalance weights, and period audit data."""
+    """Gross/net OOS results and rebalance audit data."""
 
-    returns: pd.Series
-    weights: pd.DataFrame
+    gross_returns: pd.Series
+    net_returns: pd.Series
+    target_weights: pd.DataFrame
+    pre_rebalance_weights: pd.DataFrame
+    turnover: pd.Series
+    transaction_costs: pd.Series
     periods: pd.DataFrame
+
+    @property
+    def returns(self) -> pd.Series:
+        """Backward-compatible alias for gross returns."""
+        return self.gross_returns
+
+    @property
+    def weights(self) -> pd.DataFrame:
+        """Backward-compatible alias for target weights."""
+        return self.target_weights
 
 
 def _validate_backtest_inputs(
@@ -38,6 +52,7 @@ def _validate_backtest_inputs(
     estimation_window: int = 504,
     holding_period: int = 63,
     risk_free_rate: float = 0.0,
+    transaction_cost_rate: float = 0.001,
 ) -> pd.DataFrame:
     """Validate and copy inputs for a walk-forward backtest."""
     if strategy not in VALID_STRATEGIES:
@@ -59,6 +74,12 @@ def _validate_backtest_inputs(
 
     if not math.isfinite(risk_free_rate):
         raise ValueError("risk_free_rate must be finite")
+    if not math.isfinite(transaction_cost_rate):
+        raise ValueError("transaction_cost_rate must be finite")
+    if not 0.0 <= transaction_cost_rate < 1.0:
+        raise ValueError(
+            "transaction_cost_rate must be between 0.0 and 1.0"
+        )
 
     if not isinstance(asset_returns, pd.DataFrame) or asset_returns.empty:
         raise ValueError("asset_returns must be a non-empty DataFrame")
@@ -117,12 +138,35 @@ def _calculate_weights(
     )
 
 
+def _holding_period_returns(
+    target_weights: pd.Series,
+    holding_returns: pd.DataFrame,
+) -> tuple[pd.Series, pd.Series]:
+    """Simulate buy-and-hold returns and ending drifted weights."""
+    asset_values = (1.0 + holding_returns).cumprod().mul(
+        target_weights,
+        axis="columns",
+    )
+    portfolio_values = asset_values.sum(axis=1)
+    if (portfolio_values <= 0.0).any():
+        raise ValueError("portfolio value must remain positive")
+
+    gross_returns = portfolio_values.pct_change(fill_method=None)
+    gross_returns.iloc[0] = portfolio_values.iloc[0] - 1.0
+    gross_returns.name = "gross_return"
+
+    ending_weights = asset_values.iloc[-1] / portfolio_values.iloc[-1]
+    ending_weights.name = "pre_rebalance_weight"
+    return gross_returns, ending_weights
+
+
 def walk_forward_backtest(
     asset_returns: pd.DataFrame,
     strategy: str,
     estimation_window: int = 504,
     holding_period: int = 63,
     risk_free_rate: float = 0.0,
+    transaction_cost_rate: float = 0.001,
 ) -> BacktestResult:
     """Run a rolling, fixed-holding-period out-of-sample backtest."""
     validated = _validate_backtest_inputs(
@@ -131,12 +175,18 @@ def walk_forward_backtest(
         estimation_window,
         holding_period,
         risk_free_rate,
+        transaction_cost_rate,
     )
 
-    oos_returns: list[pd.Series] = []
+    gross_return_periods: list[pd.Series] = []
+    net_return_periods: list[pd.Series] = []
     weight_rows: list[pd.Series] = []
+    pre_rebalance_rows: list[pd.Series] = []
     rebalance_dates: list[pd.Timestamp] = []
     period_rows: list[dict[str, pd.Timestamp]] = []
+    turnover_values: list[float] = []
+    transaction_cost_values: list[float] = []
+    previous_ending_weights: pd.Series | None = None
 
     final_test_start = len(validated) - holding_period
     for test_start_position in range(
@@ -155,13 +205,31 @@ def walk_forward_backtest(
             risk_free_rate,
         ).reindex(validated.columns)
 
-        period_return = test.dot(weights)
-        period_return.name = strategy
-        oos_returns.append(period_return)
+        if previous_ending_weights is None:
+            before_rebalance = weights.copy()
+            before_rebalance.name = "pre_rebalance_weight"
+            turnover = 0.0
+        else:
+            before_rebalance = previous_ending_weights
+            turnover = float((weights - before_rebalance).abs().sum())
+        transaction_cost = turnover * transaction_cost_rate
+
+        gross_returns, ending_weights = _holding_period_returns(weights, test)
+        gross_returns.name = strategy
+        net_returns = gross_returns.copy()
+        net_returns.iloc[0] = (
+            (1.0 + gross_returns.iloc[0]) * (1.0 - transaction_cost) - 1.0
+        )
+        net_returns.name = strategy
+        gross_return_periods.append(gross_returns)
+        net_return_periods.append(net_returns)
 
         rebalance_date = test.index[0]
         weight_rows.append(weights)
+        pre_rebalance_rows.append(before_rebalance)
         rebalance_dates.append(rebalance_date)
+        turnover_values.append(turnover)
+        transaction_cost_values.append(transaction_cost)
         period_rows.append(
             {
                 "rebalance": rebalance_date,
@@ -171,15 +239,25 @@ def walk_forward_backtest(
                 "test_end": test.index[-1],
             }
         )
+        previous_ending_weights = ending_weights
 
-    combined_returns = pd.concat(oos_returns)
-    combined_returns.name = strategy
+    combined_gross_returns = pd.concat(gross_return_periods)
+    combined_gross_returns.name = strategy
+    combined_net_returns = pd.concat(net_return_periods)
+    combined_net_returns.name = strategy
 
     weight_history = pd.DataFrame(
         weight_rows,
         index=pd.DatetimeIndex(rebalance_dates, name="rebalance"),
     )
     weight_history = weight_history.reindex(columns=validated.columns)
+    pre_rebalance_history = pd.DataFrame(
+        pre_rebalance_rows,
+        index=pd.DatetimeIndex(rebalance_dates, name="rebalance"),
+    )
+    pre_rebalance_history = pre_rebalance_history.reindex(
+        columns=validated.columns
+    )
 
     periods = pd.DataFrame(
         period_rows,
@@ -191,9 +269,23 @@ def walk_forward_backtest(
             "test_end",
         ],
     )
+    turnover_history = pd.Series(
+        turnover_values,
+        index=pd.DatetimeIndex(rebalance_dates, name="rebalance"),
+        name="turnover",
+    )
+    transaction_cost_history = pd.Series(
+        transaction_cost_values,
+        index=pd.DatetimeIndex(rebalance_dates, name="rebalance"),
+        name="transaction_cost",
+    )
 
     return BacktestResult(
-        returns=combined_returns,
-        weights=weight_history,
+        gross_returns=combined_gross_returns,
+        net_returns=combined_net_returns,
+        target_weights=weight_history,
+        pre_rebalance_weights=pre_rebalance_history,
+        turnover=turnover_history,
+        transaction_costs=transaction_cost_history,
         periods=periods,
     )

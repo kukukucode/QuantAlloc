@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from src.backtest import walk_forward_backtest
+from src.backtest import BacktestResult, walk_forward_backtest
 from src.benchmark import (
     calculate_benchmark_returns,
     compare_with_benchmark,
@@ -14,7 +14,11 @@ from src.diversification import (
     effective_number_of_assets,
     hhi,
 )
-from src.evaluation import compare_strategies
+from src.evaluation import (
+    compare_rebalancing_frequencies,
+    compare_strategies,
+    compare_turnover,
+)
 from src.optimization import (
     efficient_frontier,
     expected_returns,
@@ -45,6 +49,7 @@ TICKERS = list(WEIGHTS)
 BENCHMARK_TICKER = "1306.T"
 START_DATE = "2021-01-01"
 END_DATE = "2026-01-01"
+TRANSACTION_COST_RATE = 0.001
 
 
 def print_comparison(
@@ -161,25 +166,122 @@ def print_optimization_analysis(
 
 def print_strategy_comparison(
     comparison: pd.DataFrame,
+    turnover: pd.DataFrame,
 ) -> None:
-    """Print an aligned out-of-sample strategy comparison."""
-    print("\nOut-of-Sample Strategy Comparison")
+    """Print aligned net OOS performance and average turnover."""
+    print("\nRealistic OOS Performance")
     print(
-        f"{'Strategy':<20}{'CAGR':>10}{'Vol':>10}"
-        f"{'Sharpe':>10}{'MDD':>10}"
+        f"{'Strategy':<20}{'Net CAGR':>10}{'Vol':>10}"
+        f"{'Sharpe':>10}{'MDD':>10}{'Turnover':>12}"
     )
     for name, values in comparison.iterrows():
+        turnover_text = (
+            "-"
+            if name not in turnover.index
+            else f"{turnover.loc[name, 'average_turnover']:.2%}"
+        )
         print(
             f"{name:<20}{values['cagr']:>9.2%}"
             f"{values['volatility']:>9.2%}"
             f"{values['sharpe']:>10.2f}"
             f"{values['max_drawdown']:>9.2%}"
+            f"{turnover_text:>12}"
         )
 
     start_date = comparison.attrs["start_date"].date()
     end_date = comparison.attrs["end_date"].date()
     print(f"\nOOS Period: {start_date} -> {end_date}")
     print(f"Observations: {comparison.attrs['observations']}")
+
+
+def print_turnover_analysis(
+    results: dict[str, BacktestResult],
+) -> None:
+    """Print turnover history and strategy-level turnover summaries."""
+    labels = {
+        "equal_weight": "Equal Weight",
+        "minimum_variance": "Minimum Variance",
+        "maximum_sharpe": "Maximum Sharpe",
+    }
+    turnover_by_strategy = {
+        labels[strategy]: result.turnover
+        for strategy, result in results.items()
+    }
+    history = pd.DataFrame(turnover_by_strategy)
+    summary = compare_turnover(turnover_by_strategy)
+
+    print("\nTurnover by Rebalance")
+    print(history.map(lambda value: f"{value:.2%}").to_string())
+
+    print("\nTurnover Summary")
+    print(
+        f"{'Strategy':<20}{'Average':>12}"
+        f"{'Total':>12}{'Maximum':>12}"
+    )
+    for name, values in summary.iterrows():
+        print(
+            f"{name:<20}{values['average_turnover']:>11.2%}"
+            f"{values['total_turnover']:>11.2%}"
+            f"{values['maximum_turnover']:>11.2%}"
+        )
+
+    most_active = summary["total_turnover"].idxmax()
+    print(f"\nHighest Total Turnover: {most_active}")
+
+
+def print_gross_net_comparison(
+    gross: pd.DataFrame,
+    net: pd.DataFrame,
+    results: dict[str, BacktestResult],
+) -> None:
+    """Print gross/net CAGR and accumulated transaction costs."""
+    labels = {
+        "equal_weight": "Equal Weight",
+        "minimum_variance": "Minimum Variance",
+        "maximum_sharpe": "Maximum Sharpe",
+    }
+    print("\nGross vs Net CAGR")
+    print(
+        f"{'Strategy':<20}{'Gross':>12}{'Net':>12}"
+        f"{'Total Cost':>14}"
+    )
+    for strategy, label in labels.items():
+        print(
+            f"{label:<20}{gross.loc[label, 'cagr']:>11.2%}"
+            f"{net.loc[label, 'cagr']:>11.2%}"
+            f"{results[strategy].transaction_costs.sum():>13.2%}"
+        )
+
+
+def print_frequency_comparison(comparison: pd.DataFrame) -> None:
+    """Print net performance and turnover by holding period."""
+    labels = {
+        "equal_weight": "Equal Weight",
+        "minimum_variance": "Minimum Variance",
+        "maximum_sharpe": "Maximum Sharpe",
+    }
+    print("\nRebalancing Frequency Comparison")
+    print(
+        f"{'Strategy':<20}{'Holding':>9}{'Net CAGR':>11}"
+        f"{'Net Sharpe':>12}{'Avg Turnover':>15}{'Rebalances':>12}"
+    )
+    for (strategy, holding_period), values in comparison.iterrows():
+        print(
+            f"{labels[strategy]:<20}{holding_period:>8}d"
+            f"{values['net_cagr']:>10.2%}"
+            f"{values['net_sharpe']:>12.2f}"
+            f"{values['average_turnover']:>14.2%}"
+            f"{int(values['rebalances']):>12}"
+        )
+
+    start_date = comparison.attrs["start_date"].date()
+    end_date = comparison.attrs["end_date"].date()
+    print(f"\nCommon Frequency OOS Period: {start_date} -> {end_date}")
+    print(f"Observations: {comparison.attrs['observations']}")
+    print(
+        "Transaction Cost Rate: "
+        f"{comparison.attrs['transaction_cost_rate']:.2%}"
+    )
 
 
 def main() -> None:
@@ -216,22 +318,53 @@ def main() -> None:
         points=10,
     )
     backtest_results = {
-        strategy: walk_forward_backtest(asset_returns, strategy)
+        strategy: walk_forward_backtest(
+            asset_returns,
+            strategy,
+            transaction_cost_rate=TRANSACTION_COST_RATE,
+        )
         for strategy in (
             "equal_weight",
             "minimum_variance",
             "maximum_sharpe",
         )
     }
-    comparison = compare_strategies(
+    gross_comparison = compare_strategies(
         {
-            "Equal Weight": backtest_results["equal_weight"].returns,
+            "Equal Weight": backtest_results["equal_weight"].gross_returns,
             "Minimum Variance": backtest_results[
                 "minimum_variance"
-            ].returns,
-            "Maximum Sharpe": backtest_results["maximum_sharpe"].returns,
+            ].gross_returns,
+            "Maximum Sharpe": backtest_results[
+                "maximum_sharpe"
+            ].gross_returns,
             "TOPIX": benchmark_returns,
         }
+    )
+    net_comparison = compare_strategies(
+        {
+            "Equal Weight": backtest_results["equal_weight"].net_returns,
+            "Minimum Variance": backtest_results[
+                "minimum_variance"
+            ].net_returns,
+            "Maximum Sharpe": backtest_results[
+                "maximum_sharpe"
+            ].net_returns,
+            "TOPIX": benchmark_returns,
+        }
+    )
+    turnover_comparison = compare_turnover(
+        {
+            "Equal Weight": backtest_results["equal_weight"].turnover,
+            "Minimum Variance": backtest_results[
+                "minimum_variance"
+            ].turnover,
+            "Maximum Sharpe": backtest_results["maximum_sharpe"].turnover,
+        }
+    )
+    frequency_comparison = compare_rebalancing_frequencies(
+        asset_returns,
+        transaction_cost_rate=TRANSACTION_COST_RATE,
     )
 
     print_comparison(result)
@@ -248,7 +381,14 @@ def main() -> None:
         annualized_covariance,
         frontier,
     )
-    print_strategy_comparison(comparison)
+    print_strategy_comparison(net_comparison, turnover_comparison)
+    print_turnover_analysis(backtest_results)
+    print_gross_net_comparison(
+        gross_comparison,
+        net_comparison,
+        backtest_results,
+    )
+    print_frequency_comparison(frequency_comparison)
 
 
 if __name__ == "__main__":

@@ -19,6 +19,10 @@ QuantAllocは、日本株で構成されたポートフォリオをPythonで定�
 - OOSリターン、weight履歴、学習・評価期間を保存
 - 全戦略とTOPIXを共通OOS日付に揃えて公平に比較
 - OOS Strategy Comparisonを1つの表として出力
+- 保有期間中のweight driftを考慮してTurnoverを計算
+- 戦略別の平均・累積・最大Turnoverを比較
+- Turnoverに取引コストを適用してGross / Net Returnを保存
+- 21・63・126・252日のrebalance頻度を比較
 
 比較する指標:
 
@@ -60,10 +64,28 @@ Strategies        : Equal Weight
 Risk-Free Rate    : 0%
 Short Selling     : No
 Leverage          : No
-Transaction Cost  : No
+Transaction Cost  : 10 bps per turnover
 ```
 
 完全な63日OOS windowだけを採用し、同じOOS日付のTOPIXと比較します。
+
+## Realistic Backtesting
+
+前回のtarget weightを保有期間中の各資産リターンで変化させ、rebalance直前のweightを復元します。そのweightと次のtarget weightの差の絶対値を合計してTurnoverを計算します。
+
+```text
+Turnover = sum(abs(new target weight - pre-rebalance weight))
+```
+
+初回のTurnoverは0とし、各戦略についてrebalance別Turnover、平均Turnover、累積Turnover、最大Turnoverを出力します。
+
+```text
+Transaction Cost = Turnover * Cost Rate
+```
+
+既定のCost Rateは10bpsです。コスト控除前のGross Returnと控除後のNet Returnを両方保存します。
+
+同じ戦略を21日、63日、126日、252日のholding periodで実行し、共通OOS期間のNet CAGR、Net Sharpe、平均Turnoverを比較します。
 
 ## サンプル構成
 
@@ -86,7 +108,7 @@ Benchmark
 
 ## Current Status
 
-現在はv0.7です。walk-forwardで得た3戦略とTOPIXを同じOOS期間に揃え、4つの指標で比較できます。
+現在はv0.7 Realistic Backtestingです。weight drift、Turnover、取引コスト、Gross / Net Return、rebalance頻度を含むOOS比較を実行できます。
 
 ## 実行方法
 

@@ -27,13 +27,17 @@ def asset_returns() -> pd.DataFrame:
 
 def test_backtest_result_is_frozen() -> None:
     result = BacktestResult(
-        returns=pd.Series(dtype=float),
-        weights=pd.DataFrame(),
+        gross_returns=pd.Series(dtype=float),
+        net_returns=pd.Series(dtype=float),
+        target_weights=pd.DataFrame(),
+        pre_rebalance_weights=pd.DataFrame(),
+        turnover=pd.Series(dtype=float),
+        transaction_costs=pd.Series(dtype=float),
         periods=pd.DataFrame(),
     )
 
     with pytest.raises(FrozenInstanceError):
-        result.returns = pd.Series([0.01])
+        result.gross_returns = pd.Series([0.01])
 
 
 @pytest.mark.parametrize(
@@ -80,6 +84,19 @@ def test_validation_rejects_unsorted_dates(
 
     with pytest.raises(ValueError, match="sorted in ascending order"):
         _validate_backtest_inputs(unsorted, "maximum_sharpe")
+
+
+@pytest.mark.parametrize("cost_rate", [-0.001, 1.0, np.inf])
+def test_validation_rejects_invalid_transaction_cost_rate(
+    asset_returns: pd.DataFrame,
+    cost_rate: float,
+) -> None:
+    with pytest.raises(ValueError, match="transaction_cost_rate"):
+        _validate_backtest_inputs(
+            asset_returns,
+            "equal_weight",
+            transaction_cost_rate=cost_rate,
+        )
 
 
 def test_first_oos_date_follows_training_end(
@@ -178,9 +195,100 @@ def test_oos_return_uses_fixed_period_weights() -> None:
 
     result = walk_forward_backtest(returns, "equal_weight")
 
-    expected = pd.Series(
-        0.01,
-        index=index[504:567],
-        name="equal_weight",
+    asset_values = (1.0 + returns.iloc[504:567]).cumprod() * 0.5
+    portfolio_values = asset_values.sum(axis=1)
+    expected = portfolio_values.pct_change(fill_method=None)
+    expected.iloc[0] = portfolio_values.iloc[0] - 1.0
+    expected.name = "equal_weight"
+    pd.testing.assert_series_equal(result.gross_returns, expected)
+
+
+def test_first_turnover_is_zero(asset_returns: pd.DataFrame) -> None:
+    result = walk_forward_backtest(asset_returns, "equal_weight")
+
+    assert result.turnover.iloc[0] == pytest.approx(0.0)
+    assert result.turnover.index.equals(result.weights.index)
+
+
+def test_turnover_uses_drifted_pre_rebalance_weights() -> None:
+    index = pd.bdate_range("2024-01-01", periods=6)
+    returns = pd.DataFrame(
+        {
+            "A": [0.0, 0.0, 0.10, 0.0, 0.0, 0.0],
+            "B": [0.0, 0.0, 0.00, 0.0, 0.0, 0.0],
+        },
+        index=index,
     )
-    pd.testing.assert_series_equal(result.returns, expected)
+
+    result = walk_forward_backtest(
+        returns,
+        "equal_weight",
+        estimation_window=2,
+        holding_period=2,
+    )
+
+    pre_rebalance_a = 0.5 * 1.10 / (0.5 * 1.10 + 0.5)
+    expected_turnover = 2 * abs(0.5 - pre_rebalance_a)
+    assert result.turnover.to_list() == pytest.approx(
+        [0.0, expected_turnover]
+    )
+    assert result.pre_rebalance_weights.iloc[1, 0] == pytest.approx(
+        pre_rebalance_a
+    )
+
+
+def test_transaction_cost_is_applied_to_first_return_after_rebalance() -> None:
+    index = pd.bdate_range("2024-01-01", periods=6)
+    returns = pd.DataFrame(
+        {
+            "A": [0.0, 0.0, 0.10, 0.0, 0.0, 0.0],
+            "B": [0.0, 0.0, 0.00, 0.0, 0.0, 0.0],
+        },
+        index=index,
+    )
+
+    result = walk_forward_backtest(
+        returns,
+        "equal_weight",
+        estimation_window=2,
+        holding_period=2,
+        transaction_cost_rate=0.01,
+    )
+
+    assert result.transaction_costs.iloc[0] == pytest.approx(0.0)
+    assert result.transaction_costs.iloc[1] == pytest.approx(
+        result.turnover.iloc[1] * 0.01
+    )
+    second_rebalance = result.transaction_costs.index[1]
+    expected_net_return = (
+        (1.0 + result.gross_returns.loc[second_rebalance])
+        * (1.0 - result.transaction_costs.iloc[1])
+        - 1.0
+    )
+    assert result.net_returns.loc[second_rebalance] == pytest.approx(
+        expected_net_return
+    )
+
+
+def test_zero_cost_makes_gross_and_net_returns_equal(
+    asset_returns: pd.DataFrame,
+) -> None:
+    result = walk_forward_backtest(
+        asset_returns,
+        "minimum_variance",
+        transaction_cost_rate=0.0,
+    )
+
+    pd.testing.assert_series_equal(
+        result.gross_returns,
+        result.net_returns,
+    )
+
+
+def test_returns_and_weights_aliases_remain_compatible(
+    asset_returns: pd.DataFrame,
+) -> None:
+    result = walk_forward_backtest(asset_returns, "equal_weight")
+
+    assert result.returns is result.gross_returns
+    assert result.weights is result.target_weights
