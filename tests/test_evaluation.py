@@ -239,3 +239,25 @@ def test_frequency_comparison_rejects_empty_configuration() -> None:
 
     with pytest.raises(ValueError, match="strategies must not be empty"):
         compare_rebalancing_frequencies(returns, strategies=())
+
+
+def test_frequency_comparison_supports_risk_parity() -> None:
+    generator = np.random.default_rng(456)
+    index = pd.bdate_range("2023-01-02", periods=20)
+    returns = pd.DataFrame(
+        generator.normal(0.001, 0.01, size=(20, 3)),
+        index=index,
+        columns=["A", "B", "C"],
+    )
+
+    result = compare_rebalancing_frequencies(
+        returns,
+        strategies=("risk_parity",),
+        holding_periods=(2,),
+        estimation_window=4,
+        transaction_cost_rate=0.001,
+    )
+
+    assert list(result.index) == [("risk_parity", 2)]
+    assert result.loc[("risk_parity", 2), "rebalances"] == 8
+    assert result.loc[("risk_parity", 2), "total_transaction_cost"] >= 0.0

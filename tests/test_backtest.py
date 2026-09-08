@@ -42,7 +42,12 @@ def test_backtest_result_is_frozen() -> None:
 
 @pytest.mark.parametrize(
     "strategy",
-    ["equal_weight", "minimum_variance", "maximum_sharpe"],
+    [
+        "equal_weight",
+        "minimum_variance",
+        "maximum_sharpe",
+        "risk_parity",
+    ],
 )
 def test_validation_accepts_supported_strategies(
     asset_returns: pd.DataFrame,
@@ -168,7 +173,12 @@ def test_future_data_does_not_change_first_weights() -> None:
 
 @pytest.mark.parametrize(
     "strategy",
-    ["equal_weight", "minimum_variance", "maximum_sharpe"],
+    [
+        "equal_weight",
+        "minimum_variance",
+        "maximum_sharpe",
+        "risk_parity",
+    ],
 )
 def test_backtest_weights_follow_constraints(strategy: str) -> None:
     generator = np.random.default_rng(7)

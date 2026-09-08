@@ -15,7 +15,9 @@ QuantAllocは、日本株で構成されたポートフォリオをPythonで定�
 - Minimum Variance Portfolioを計算
 - Maximum Sharpe Portfolioを計算
 - Efficient Frontierを計算
-- 3戦略をrolling walk-forward方式でバックテスト
+- Risk Parity / Equal Risk Contribution Portfolioを計算
+- ERC Weightと各銘柄のRisk Contributionを並べて確認
+- 4戦略をrolling walk-forward方式でバックテスト
 - OOSリターン、weight履歴、学習・評価期間を保存
 - 全戦略とTOPIXを共通OOS日付に揃えて公平に比較
 - OOS Strategy Comparisonを1つの表として出力
@@ -61,6 +63,7 @@ Window Type       : Rolling
 Strategies        : Equal Weight
                     Minimum Variance
                     Maximum Sharpe
+                    Risk Parity / ERC
 Risk-Free Rate    : 0%
 Short Selling     : No
 Leverage          : No
@@ -87,6 +90,19 @@ Transaction Cost = Turnover * Cost Rate
 
 同じ戦略を21日、63日、126日、252日のholding periodで実行し、共通OOS期間のNet CAGR、Net Sharpe、平均Turnoverを比較します。
 
+## Risk Parity / Equal Risk Contribution
+
+年率共分散行列だけを使い、全銘柄のRisk Contributionがほぼ均等になるweightを計算します。Expected Returnは使用しません。
+
+```text
+Equal Weight : Capitalを均等配分
+Risk Parity  : Riskを均等配分
+```
+
+ERCも既存戦略と同じく、空売りなし、レバレッジなし、配分合計100%です。Walk-Forwardでは各Training Windowの共分散行列からERC weightを決め、weight drift、Turnover、10bpsの取引コストを反映したNet Returnを評価します。
+
+最終比較ではEqual Weight、Minimum Variance、Maximum Sharpe、Risk Parity / ERC、TOPIXを同じOOS期間に揃えます。
+
 ## サンプル構成
 
 ```text
@@ -108,7 +124,7 @@ Benchmark
 
 ## Current Status
 
-現在はv0.7 Realistic Backtestingです。weight drift、Turnover、取引コスト、Gross / Net Return、rebalance頻度を含むOOS比較を実行できます。
+現在はv0.8 Risk Parity / ERCです。ERC weightとRisk Contributionを計算し、weight drift、Turnover、取引コストを含むWalk-Forwardで既存3戦略およびTOPIXと比較できます。
 
 ## 実行方法
 

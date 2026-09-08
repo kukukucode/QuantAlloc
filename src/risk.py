@@ -8,7 +8,8 @@ import pandas as pd
 from src.portfolio import validate_weights
 
 
-def _validate_covariance(covariance: pd.DataFrame) -> pd.DataFrame:
+def validate_covariance(covariance: pd.DataFrame) -> pd.DataFrame:
+    """Validate a covariance matrix used by risk calculations."""
     if not isinstance(covariance, pd.DataFrame) or covariance.empty:
         raise ValueError("covariance must be a non-empty DataFrame")
     if covariance.shape[0] != covariance.shape[1]:
@@ -39,7 +40,7 @@ def _align_weights(
     if not isinstance(weights, pd.Series):
         raise TypeError("weights must be a pandas Series")
 
-    validated_covariance = _validate_covariance(covariance)
+    validated_covariance = validate_covariance(covariance)
     if set(weights.index) != set(validated_covariance.columns):
         raise ValueError("weights and covariance assets must match")
 

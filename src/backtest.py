@@ -12,6 +12,7 @@ from src.optimization import (
     maximum_sharpe_weights,
     minimum_variance_weights,
 )
+from src.risk_parity import equal_risk_contribution_weights
 
 
 VALID_STRATEGIES = frozenset(
@@ -19,6 +20,7 @@ VALID_STRATEGIES = frozenset(
         "equal_weight",
         "minimum_variance",
         "maximum_sharpe",
+        "risk_parity",
     }
 )
 
@@ -129,6 +131,8 @@ def _calculate_weights(
     covariance = covariance_matrix(training_returns)
     if strategy == "minimum_variance":
         return minimum_variance_weights(covariance)
+    if strategy == "risk_parity":
+        return equal_risk_contribution_weights(covariance)
 
     historical_returns = expected_returns(training_returns)
     return maximum_sharpe_weights(

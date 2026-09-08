@@ -32,6 +32,7 @@ from src.portfolio import (
     validate_weights,
 )
 from src.risk import risk_contribution
+from src.risk_parity import equal_risk_contribution_weights
 
 WEIGHTS = {
     "7203.T": 0.10,
@@ -50,6 +51,12 @@ BENCHMARK_TICKER = "1306.T"
 START_DATE = "2021-01-01"
 END_DATE = "2026-01-01"
 TRANSACTION_COST_RATE = 0.001
+STRATEGY_LABELS = {
+    "equal_weight": "Equal Weight",
+    "minimum_variance": "Minimum Variance",
+    "maximum_sharpe": "Maximum Sharpe",
+    "risk_parity": "Risk Parity",
+}
 
 
 def print_comparison(
@@ -164,6 +171,19 @@ def print_optimization_analysis(
     print(frontier_table.map(lambda value: f"{value:.2%}").to_string(index=False))
 
 
+def print_risk_parity_analysis(
+    weights: pd.Series,
+    covariance: pd.DataFrame,
+) -> None:
+    """Print ERC weights and their percentage risk contributions."""
+    contributions = risk_contribution(weights, covariance)
+    allocation = contributions[["weight", "risk_contribution_pct"]].copy()
+    allocation.columns = ["Weight", "Risk Contribution"]
+
+    print("\nRisk Parity / Equal Risk Contribution")
+    print(allocation.map(lambda value: f"{value:.2%}").to_string())
+
+
 def print_strategy_comparison(
     comparison: pd.DataFrame,
     turnover: pd.DataFrame,
@@ -198,13 +218,8 @@ def print_turnover_analysis(
     results: dict[str, BacktestResult],
 ) -> None:
     """Print turnover history and strategy-level turnover summaries."""
-    labels = {
-        "equal_weight": "Equal Weight",
-        "minimum_variance": "Minimum Variance",
-        "maximum_sharpe": "Maximum Sharpe",
-    }
     turnover_by_strategy = {
-        labels[strategy]: result.turnover
+        STRATEGY_LABELS[strategy]: result.turnover
         for strategy, result in results.items()
     }
     history = pd.DataFrame(turnover_by_strategy)
@@ -235,17 +250,12 @@ def print_gross_net_comparison(
     results: dict[str, BacktestResult],
 ) -> None:
     """Print gross/net CAGR and accumulated transaction costs."""
-    labels = {
-        "equal_weight": "Equal Weight",
-        "minimum_variance": "Minimum Variance",
-        "maximum_sharpe": "Maximum Sharpe",
-    }
     print("\nGross vs Net CAGR")
     print(
         f"{'Strategy':<20}{'Gross':>12}{'Net':>12}"
         f"{'Total Cost':>14}"
     )
-    for strategy, label in labels.items():
+    for strategy, label in STRATEGY_LABELS.items():
         print(
             f"{label:<20}{gross.loc[label, 'cagr']:>11.2%}"
             f"{net.loc[label, 'cagr']:>11.2%}"
@@ -255,11 +265,6 @@ def print_gross_net_comparison(
 
 def print_frequency_comparison(comparison: pd.DataFrame) -> None:
     """Print net performance and turnover by holding period."""
-    labels = {
-        "equal_weight": "Equal Weight",
-        "minimum_variance": "Minimum Variance",
-        "maximum_sharpe": "Maximum Sharpe",
-    }
     print("\nRebalancing Frequency Comparison")
     print(
         f"{'Strategy':<20}{'Holding':>9}{'Net CAGR':>11}"
@@ -267,7 +272,7 @@ def print_frequency_comparison(comparison: pd.DataFrame) -> None:
     )
     for (strategy, holding_period), values in comparison.iterrows():
         print(
-            f"{labels[strategy]:<20}{holding_period:>8}d"
+            f"{STRATEGY_LABELS[strategy]:<20}{holding_period:>8}d"
             f"{values['net_cagr']:>10.2%}"
             f"{values['net_sharpe']:>12.2f}"
             f"{values['average_turnover']:>14.2%}"
@@ -312,6 +317,9 @@ def main() -> None:
         historical_returns,
         annualized_covariance,
     )
+    risk_parity_weights = equal_risk_contribution_weights(
+        annualized_covariance
+    )
     frontier = efficient_frontier(
         historical_returns,
         annualized_covariance,
@@ -323,43 +331,30 @@ def main() -> None:
             strategy,
             transaction_cost_rate=TRANSACTION_COST_RATE,
         )
-        for strategy in (
-            "equal_weight",
-            "minimum_variance",
-            "maximum_sharpe",
-        )
+        for strategy in STRATEGY_LABELS
     }
     gross_comparison = compare_strategies(
         {
-            "Equal Weight": backtest_results["equal_weight"].gross_returns,
-            "Minimum Variance": backtest_results[
-                "minimum_variance"
-            ].gross_returns,
-            "Maximum Sharpe": backtest_results[
-                "maximum_sharpe"
-            ].gross_returns,
+            STRATEGY_LABELS[strategy]: result.gross_returns
+            for strategy, result in backtest_results.items()
+        }
+        | {
             "TOPIX": benchmark_returns,
         }
     )
     net_comparison = compare_strategies(
         {
-            "Equal Weight": backtest_results["equal_weight"].net_returns,
-            "Minimum Variance": backtest_results[
-                "minimum_variance"
-            ].net_returns,
-            "Maximum Sharpe": backtest_results[
-                "maximum_sharpe"
-            ].net_returns,
+            STRATEGY_LABELS[strategy]: result.net_returns
+            for strategy, result in backtest_results.items()
+        }
+        | {
             "TOPIX": benchmark_returns,
         }
     )
     turnover_comparison = compare_turnover(
         {
-            "Equal Weight": backtest_results["equal_weight"].turnover,
-            "Minimum Variance": backtest_results[
-                "minimum_variance"
-            ].turnover,
-            "Maximum Sharpe": backtest_results["maximum_sharpe"].turnover,
+            STRATEGY_LABELS[strategy]: result.turnover
+            for strategy, result in backtest_results.items()
         }
     )
     frequency_comparison = compare_rebalancing_frequencies(
@@ -380,6 +375,10 @@ def main() -> None:
         historical_returns,
         annualized_covariance,
         frontier,
+    )
+    print_risk_parity_analysis(
+        risk_parity_weights,
+        annualized_covariance,
     )
     print_strategy_comparison(net_comparison, turnover_comparison)
     print_turnover_analysis(backtest_results)

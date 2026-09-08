@@ -128,6 +128,7 @@ def compare_rebalancing_frequencies(
         "equal_weight",
         "minimum_variance",
         "maximum_sharpe",
+        "risk_parity",
     ),
     holding_periods: tuple[int, ...] = (21, 63, 126, 252),
     estimation_window: int = 504,
