@@ -6,7 +6,7 @@ import math
 import numpy as np
 import pandas as pd
 
-from src.diversification import covariance_matrix
+from src.covariance import VALID_COVARIANCE_METHODS, estimate_covariance
 from src.optimization import (
     expected_returns,
     maximum_sharpe_weights,
@@ -55,11 +55,14 @@ def _validate_backtest_inputs(
     holding_period: int = 63,
     risk_free_rate: float = 0.0,
     transaction_cost_rate: float = 0.001,
+    covariance_method: str = "sample",
 ) -> pd.DataFrame:
     """Validate and copy inputs for a walk-forward backtest."""
     if strategy not in VALID_STRATEGIES:
         valid = ", ".join(sorted(VALID_STRATEGIES))
         raise ValueError(f"unknown strategy: {strategy}; expected one of {valid}")
+    if covariance_method not in VALID_COVARIANCE_METHODS:
+        raise ValueError(f"unknown covariance method: {covariance_method}")
 
     if isinstance(estimation_window, bool) or not isinstance(
         estimation_window,
@@ -118,6 +121,7 @@ def _calculate_weights(
     training_returns: pd.DataFrame,
     strategy: str,
     risk_free_rate: float,
+    covariance_method: str,
 ) -> pd.Series:
     """Calculate weights using training data only."""
     if strategy == "equal_weight":
@@ -128,7 +132,10 @@ def _calculate_weights(
             name="equal_weight",
         )
 
-    covariance = covariance_matrix(training_returns)
+    covariance = estimate_covariance(
+        training_returns,
+        method=covariance_method,
+    )
     if strategy == "minimum_variance":
         return minimum_variance_weights(covariance)
     if strategy == "risk_parity":
@@ -171,6 +178,7 @@ def walk_forward_backtest(
     holding_period: int = 63,
     risk_free_rate: float = 0.0,
     transaction_cost_rate: float = 0.001,
+    covariance_method: str = "sample",
 ) -> BacktestResult:
     """Run a rolling, fixed-holding-period out-of-sample backtest."""
     validated = _validate_backtest_inputs(
@@ -180,6 +188,7 @@ def walk_forward_backtest(
         holding_period,
         risk_free_rate,
         transaction_cost_rate,
+        covariance_method,
     )
 
     gross_return_periods: list[pd.Series] = []
@@ -207,6 +216,7 @@ def walk_forward_backtest(
             training,
             strategy,
             risk_free_rate,
+            covariance_method,
         ).reindex(validated.columns)
 
         if previous_ending_weights is None:

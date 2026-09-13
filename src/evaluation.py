@@ -122,6 +122,170 @@ def compare_turnover(
     ]
 
 
+def average_target_weight_change(target_weights: pd.DataFrame) -> float:
+    """Calculate mean target-to-target absolute weight change."""
+    if not isinstance(target_weights, pd.DataFrame) or target_weights.empty:
+        raise ValueError("target_weights must be a non-empty DataFrame")
+    if target_weights.columns.has_duplicates:
+        raise ValueError("target_weights columns must be unique")
+    try:
+        validated = target_weights.apply(
+            pd.to_numeric,
+            errors="raise",
+        ).astype(float)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("target_weights must be numeric") from exc
+    if validated.isna().any().any():
+        raise ValueError("target_weights must not contain missing values")
+    if not np.isfinite(validated.to_numpy()).all():
+        raise ValueError("target_weights must contain only finite values")
+    if len(validated) == 1:
+        return 0.0
+
+    changes = validated.diff().iloc[1:].abs().sum(axis=1)
+    return float(changes.mean())
+
+
+def compare_covariance_estimators(
+    asset_returns: pd.DataFrame,
+    benchmark_returns: pd.Series | None = None,
+    strategies: tuple[str, ...] = (
+        "minimum_variance",
+        "risk_parity",
+    ),
+    covariance_methods: tuple[str, ...] = (
+        "sample",
+        "ledoit_wolf",
+    ),
+    estimation_window: int = 504,
+    holding_period: int = 63,
+    risk_free_rate: float = 0.0,
+    transaction_cost_rate: float = 0.001,
+) -> pd.DataFrame:
+    """Compare covariance estimators on one common net OOS period."""
+    if not strategies:
+        raise ValueError("strategies must not be empty")
+    if not covariance_methods:
+        raise ValueError("covariance_methods must not be empty")
+    if len(set(strategies)) != len(strategies):
+        raise ValueError("strategies must not contain duplicates")
+    if len(set(covariance_methods)) != len(covariance_methods):
+        raise ValueError("covariance_methods must not contain duplicates")
+
+    results: dict[tuple[str, str], BacktestResult] = {}
+    for strategy in strategies:
+        for covariance_method in covariance_methods:
+            results[(strategy, covariance_method)] = walk_forward_backtest(
+                asset_returns,
+                strategy,
+                estimation_window=estimation_window,
+                holding_period=holding_period,
+                risk_free_rate=risk_free_rate,
+                transaction_cost_rate=transaction_cost_rate,
+                covariance_method=covariance_method,
+            )
+
+    return_series: dict[tuple[str, str], pd.Series] = {
+        key: result.net_returns for key, result in results.items()
+    }
+    benchmark_key = ("TOPIX", "benchmark")
+    if benchmark_returns is not None:
+        if not isinstance(benchmark_returns, pd.Series) or benchmark_returns.empty:
+            raise ValueError("benchmark_returns must be a non-empty Series")
+        if not isinstance(benchmark_returns.index, pd.DatetimeIndex):
+            raise TypeError("benchmark_returns must use a DatetimeIndex")
+        if benchmark_returns.index.has_duplicates:
+            raise ValueError("benchmark_returns index must be unique")
+        try:
+            numeric_benchmark = pd.to_numeric(
+                benchmark_returns,
+                errors="raise",
+            ).astype(float)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("benchmark_returns must be numeric") from exc
+        return_series[benchmark_key] = numeric_benchmark.sort_index()
+
+    aligned_net_returns = pd.concat(
+        return_series,
+        axis=1,
+        join="inner",
+    ).sort_index()
+    if len(aligned_net_returns) < 2:
+        raise ValueError("covariance results must share at least two OOS dates")
+    if aligned_net_returns.isna().any().any():
+        raise ValueError("aligned covariance returns must not contain NaN")
+    if not np.isfinite(aligned_net_returns.to_numpy()).all():
+        raise ValueError(
+            "aligned covariance returns must contain only finite values"
+        )
+
+    start_date = aligned_net_returns.index[0]
+    end_date = aligned_net_returns.index[-1]
+    rows: list[dict[str, float | str]] = []
+    for key, result in results.items():
+        strategy, covariance_method = key
+        summary = performance_summary(aligned_net_returns[key])
+        in_common_period = (
+            (result.turnover.index >= start_date)
+            & (result.turnover.index <= end_date)
+        )
+        turnover = result.turnover.loc[in_common_period]
+        if turnover.empty:
+            turnover_metrics = {
+                "average_turnover": 0.0,
+                "total_turnover": 0.0,
+                "maximum_turnover": 0.0,
+            }
+        else:
+            turnover_metrics = turnover_summary(turnover)
+        costs = result.transaction_costs.reindex(turnover.index)
+        target_weights = result.target_weights.loc[in_common_period]
+        rows.append(
+            {
+                "strategy": strategy,
+                "covariance": covariance_method,
+                "net_cagr": summary["cagr"],
+                "net_volatility": summary["volatility"],
+                "net_sharpe": summary["sharpe"],
+                "net_max_drawdown": summary["max_drawdown"],
+                "average_target_weight_change": (
+                    average_target_weight_change(target_weights)
+                    if not target_weights.empty
+                    else 0.0
+                ),
+                **turnover_metrics,
+                "total_transaction_cost": float(costs.sum()),
+            }
+        )
+
+    if benchmark_returns is not None:
+        summary = performance_summary(aligned_net_returns[benchmark_key])
+        rows.append(
+            {
+                "strategy": benchmark_key[0],
+                "covariance": benchmark_key[1],
+                "net_cagr": summary["cagr"],
+                "net_volatility": summary["volatility"],
+                "net_sharpe": summary["sharpe"],
+                "net_max_drawdown": summary["max_drawdown"],
+                "average_target_weight_change": float("nan"),
+                "average_turnover": float("nan"),
+                "total_turnover": float("nan"),
+                "maximum_turnover": float("nan"),
+                "total_transaction_cost": float("nan"),
+            }
+        )
+
+    comparison = pd.DataFrame(rows).set_index(["strategy", "covariance"])
+    comparison.attrs = {
+        "start_date": start_date,
+        "end_date": end_date,
+        "observations": len(aligned_net_returns),
+        "transaction_cost_rate": transaction_cost_rate,
+    }
+    return comparison
+
+
 def compare_rebalancing_frequencies(
     asset_returns: pd.DataFrame,
     strategies: tuple[str, ...] = (
@@ -134,6 +298,7 @@ def compare_rebalancing_frequencies(
     estimation_window: int = 504,
     risk_free_rate: float = 0.0,
     transaction_cost_rate: float = 0.001,
+    covariance_method: str = "sample",
 ) -> pd.DataFrame:
     """Compare net OOS results across rebalancing frequencies."""
     if not strategies:
@@ -151,10 +316,11 @@ def compare_rebalancing_frequencies(
             results[(strategy, holding_period)] = walk_forward_backtest(
                 asset_returns,
                 strategy,
-                estimation_window,
-                holding_period,
-                risk_free_rate,
-                transaction_cost_rate,
+                estimation_window=estimation_window,
+                holding_period=holding_period,
+                risk_free_rate=risk_free_rate,
+                transaction_cost_rate=transaction_cost_rate,
+                covariance_method=covariance_method,
             )
 
     aligned_net_returns = pd.concat(
@@ -204,5 +370,6 @@ def compare_rebalancing_frequencies(
         "end_date": end_date,
         "observations": len(aligned_net_returns),
         "transaction_cost_rate": transaction_cost_rate,
+        "covariance_method": covariance_method,
     }
     return comparison

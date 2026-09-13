@@ -15,6 +15,7 @@ from src.diversification import (
     hhi,
 )
 from src.evaluation import (
+    compare_covariance_estimators,
     compare_rebalancing_frequencies,
     compare_strategies,
     compare_turnover,
@@ -56,6 +57,11 @@ STRATEGY_LABELS = {
     "minimum_variance": "Minimum Variance",
     "maximum_sharpe": "Maximum Sharpe",
     "risk_parity": "Risk Parity",
+}
+COVARIANCE_LABELS = {
+    "sample": "Sample",
+    "ledoit_wolf": "Ledoit-Wolf",
+    "benchmark": "-",
 }
 
 
@@ -289,6 +295,48 @@ def print_frequency_comparison(comparison: pd.DataFrame) -> None:
     )
 
 
+def print_covariance_estimator_comparison(
+    comparison: pd.DataFrame,
+) -> None:
+    """Print OOS performance and stability by covariance estimator."""
+    print("\nCovariance Estimation OOS Comparison")
+    print(
+        f"{'Strategy':<20}{'Covariance':<15}{'Net CAGR':>10}"
+        f"{'Vol':>10}{'Sharpe':>10}{'MDD':>10}"
+    )
+    for (strategy, covariance_method), values in comparison.iterrows():
+        strategy_label = STRATEGY_LABELS.get(strategy, strategy)
+        covariance_label = COVARIANCE_LABELS[covariance_method]
+        print(
+            f"{strategy_label:<20}{covariance_label:<15}"
+            f"{values['net_cagr']:>9.2%}"
+            f"{values['net_volatility']:>9.2%}"
+            f"{values['net_sharpe']:>10.2f}"
+            f"{values['net_max_drawdown']:>9.2%}"
+        )
+
+    print("\nCovariance Estimation Stability")
+    print(
+        f"{'Strategy':<20}{'Covariance':<15}{'Weight Change':>15}"
+        f"{'Avg Turnover':>15}{'Total Cost':>13}"
+    )
+    for (strategy, covariance_method), values in comparison.iterrows():
+        if strategy == "TOPIX":
+            continue
+        print(
+            f"{STRATEGY_LABELS[strategy]:<20}"
+            f"{COVARIANCE_LABELS[covariance_method]:<15}"
+            f"{values['average_target_weight_change']:>14.2%}"
+            f"{values['average_turnover']:>14.2%}"
+            f"{values['total_transaction_cost']:>12.2%}"
+        )
+
+    start_date = comparison.attrs["start_date"].date()
+    end_date = comparison.attrs["end_date"].date()
+    print(f"\nCovariance OOS Period: {start_date} -> {end_date}")
+    print(f"Observations: {comparison.attrs['observations']}")
+
+
 def main() -> None:
     """Compare the example portfolio with the TOPIX benchmark."""
     prices = fetch_prices(TICKERS, START_DATE, END_DATE)
@@ -361,6 +409,11 @@ def main() -> None:
         asset_returns,
         transaction_cost_rate=TRANSACTION_COST_RATE,
     )
+    covariance_comparison = compare_covariance_estimators(
+        asset_returns,
+        benchmark_returns=benchmark_returns,
+        transaction_cost_rate=TRANSACTION_COST_RATE,
+    )
 
     print_comparison(result)
     print_diversification_analysis(
@@ -388,6 +441,7 @@ def main() -> None:
         backtest_results,
     )
     print_frequency_comparison(frequency_comparison)
+    print_covariance_estimator_comparison(covariance_comparison)
 
 
 if __name__ == "__main__":

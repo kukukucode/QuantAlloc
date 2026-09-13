@@ -66,6 +66,17 @@ def test_validation_rejects_unknown_strategy(
         _validate_backtest_inputs(asset_returns, "unknown")
 
 
+def test_validation_rejects_unknown_covariance_method(
+    asset_returns: pd.DataFrame,
+) -> None:
+    with pytest.raises(ValueError, match="unknown covariance method: magic"):
+        _validate_backtest_inputs(
+            asset_returns,
+            "minimum_variance",
+            covariance_method="magic",
+        )
+
+
 def test_validation_rejects_insufficient_data(
     asset_returns: pd.DataFrame,
 ) -> None:
@@ -144,7 +155,10 @@ def test_incomplete_final_window_is_ignored() -> None:
     assert result.returns.index[-1] == index[566]
 
 
-def test_future_data_does_not_change_first_weights() -> None:
+@pytest.mark.parametrize("covariance_method", ["sample", "ledoit_wolf"])
+def test_future_data_does_not_change_first_weights(
+    covariance_method: str,
+) -> None:
     generator = np.random.default_rng(42)
     index = pd.bdate_range("2020-01-01", periods=567)
     training = generator.normal(0.0005, 0.01, size=(504, 3))
@@ -162,8 +176,16 @@ def test_future_data_does_not_change_first_weights() -> None:
         columns=["A", "B", "C"],
     )
 
-    result_a = walk_forward_backtest(dataset_a, "maximum_sharpe")
-    result_b = walk_forward_backtest(dataset_b, "maximum_sharpe")
+    result_a = walk_forward_backtest(
+        dataset_a,
+        "maximum_sharpe",
+        covariance_method=covariance_method,
+    )
+    result_b = walk_forward_backtest(
+        dataset_b,
+        "maximum_sharpe",
+        covariance_method=covariance_method,
+    )
 
     pd.testing.assert_series_equal(
         result_a.weights.iloc[0],
@@ -302,3 +324,43 @@ def test_returns_and_weights_aliases_remain_compatible(
 
     assert result.returns is result.gross_returns
     assert result.weights is result.target_weights
+
+
+def test_default_covariance_method_matches_explicit_sample(
+    asset_returns: pd.DataFrame,
+) -> None:
+    default = walk_forward_backtest(asset_returns, "minimum_variance")
+    explicit = walk_forward_backtest(
+        asset_returns,
+        "minimum_variance",
+        covariance_method="sample",
+    )
+
+    pd.testing.assert_frame_equal(default.weights, explicit.weights)
+    pd.testing.assert_series_equal(default.net_returns, explicit.net_returns)
+
+
+@pytest.mark.parametrize(
+    "strategy",
+    ["minimum_variance", "maximum_sharpe", "risk_parity"],
+)
+def test_ledoit_wolf_backtest_supports_covariance_strategies(
+    strategy: str,
+) -> None:
+    generator = np.random.default_rng(99)
+    index = pd.bdate_range("2020-01-01", periods=567)
+    returns = pd.DataFrame(
+        generator.normal(0.0005, 0.01, size=(567, 4)),
+        index=index,
+        columns=["A", "B", "C", "D"],
+    )
+
+    result = walk_forward_backtest(
+        returns,
+        strategy,
+        covariance_method="ledoit_wolf",
+    )
+
+    assert len(result.net_returns) == 63
+    assert result.weights.sum(axis=1).to_numpy() == pytest.approx([1.0])
+    assert (result.weights >= 0.0).all().all()

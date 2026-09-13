@@ -5,6 +5,8 @@ import pandas as pd
 import pytest
 
 from src.evaluation import (
+    average_target_weight_change,
+    compare_covariance_estimators,
     compare_rebalancing_frequencies,
     compare_strategies,
     compare_turnover,
@@ -261,3 +263,105 @@ def test_frequency_comparison_supports_risk_parity() -> None:
     assert list(result.index) == [("risk_parity", 2)]
     assert result.loc[("risk_parity", 2), "rebalances"] == 8
     assert result.loc[("risk_parity", 2), "total_transaction_cost"] >= 0.0
+
+
+def test_average_target_weight_change() -> None:
+    weights = pd.DataFrame(
+        {
+            "A": [0.50, 0.40, 0.65],
+            "B": [0.50, 0.60, 0.35],
+        }
+    )
+
+    assert average_target_weight_change(weights) == pytest.approx(0.35)
+
+
+def test_covariance_comparison_contains_all_primary_combinations() -> None:
+    generator = np.random.default_rng(789)
+    index = pd.bdate_range("2023-01-02", periods=20)
+    returns = pd.DataFrame(
+        generator.normal(0.001, 0.01, size=(20, 3)),
+        index=index,
+        columns=["A", "B", "C"],
+    )
+
+    result = compare_covariance_estimators(
+        returns,
+        estimation_window=4,
+        holding_period=2,
+    )
+
+    assert list(result.index) == [
+        ("minimum_variance", "sample"),
+        ("minimum_variance", "ledoit_wolf"),
+        ("risk_parity", "sample"),
+        ("risk_parity", "ledoit_wolf"),
+    ]
+    assert result.index.names == ["strategy", "covariance"]
+    assert set(result.columns) == {
+        "net_cagr",
+        "net_volatility",
+        "net_sharpe",
+        "net_max_drawdown",
+        "average_target_weight_change",
+        "average_turnover",
+        "total_turnover",
+        "maximum_turnover",
+        "total_transaction_cost",
+    }
+    assert (result["average_turnover"] >= 0.0).all()
+    assert (result["total_transaction_cost"] >= 0.0).all()
+
+
+def test_covariance_comparison_aligns_topix_to_common_dates() -> None:
+    generator = np.random.default_rng(321)
+    index = pd.bdate_range("2023-01-02", periods=20)
+    returns = pd.DataFrame(
+        generator.normal(0.001, 0.01, size=(20, 3)),
+        index=index,
+        columns=["A", "B", "C"],
+    )
+    benchmark = pd.Series(
+        generator.normal(0.0005, 0.008, size=18),
+        index=index[2:],
+    )
+
+    result = compare_covariance_estimators(
+        returns,
+        benchmark_returns=benchmark,
+        strategies=("minimum_variance",),
+        covariance_methods=("sample", "ledoit_wolf"),
+        estimation_window=4,
+        holding_period=2,
+    )
+
+    assert list(result.index) == [
+        ("minimum_variance", "sample"),
+        ("minimum_variance", "ledoit_wolf"),
+        ("TOPIX", "benchmark"),
+    ]
+    assert result.attrs["start_date"] == index[4]
+    assert result.attrs["end_date"] == index[-1]
+    assert result.attrs["observations"] == 16
+    assert np.isnan(
+        result.loc[("TOPIX", "benchmark"), "average_turnover"]
+    )
+
+
+def test_covariance_comparison_rejects_invalid_method() -> None:
+    generator = np.random.default_rng(654)
+    index = pd.bdate_range("2023-01-02", periods=8)
+    returns = pd.DataFrame(
+        generator.normal(0.001, 0.01, size=(8, 2)),
+        index=index,
+        columns=["A", "B"],
+    )
+
+    with pytest.raises(ValueError, match="unknown covariance method: magic"):
+        compare_covariance_estimators(
+            returns,
+            strategies=("minimum_variance",),
+            covariance_methods=("magic",),
+            estimation_window=4,
+            holding_period=2,
+        )

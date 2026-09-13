@@ -1,132 +1,53 @@
 # QuantAlloc
 
-QuantAllocは、日本株で構成されたポートフォリオをPythonで定量分析し、TOPIXとの比較や分散状況を確認するプロジェクトです。
+QuantAllocは、日本株ポートフォリオをPythonで定量分析し、TOPIXや複数の資産配分戦略と比較するプロジェクトです。
 
 松尾研究所が提供する講座で学んだ内容を実践し、理解を深める目的で作成しました。
 
-## できること
+Current version: **v0.9 Robust Covariance Estimation**
+
+## 主な機能
 
 - Yahoo Financeから日本株・東証ETFの価格データを取得
-- 指定した配分からポートフォリオの日次リターンを計算
-- ポートフォリオとTOPIX連動ETFを共通期間で比較
-- ポートフォリオとベンチマークの累積リターンを計算
-- 各銘柄の日次リターンから相関行列を計算
-- 日次共分散行列を252取引日で年率化
-- HHIとEffective Number of Assetsで配分の集中度を確認
-- 各銘柄のRisk Contributionを計算
-- Minimum Variance Portfolioを計算
-- Maximum Sharpe Portfolioを計算
-- Efficient Frontierを計算
-- Risk Parity / Equal Risk Contribution Portfolioを計算
-- ERC Weightと各銘柄のRisk Contributionを並べて確認
-- 4戦略をrolling walk-forward方式でバックテスト
-- OOSリターン、weight履歴、学習・評価期間を保存
-- 全戦略とTOPIXを共通OOS日付に揃えて公平に比較
-- OOS Strategy Comparisonを1つの表として出力
-- 保有期間中のweight driftを考慮してTurnoverを計算
-- 戦略別の平均・累積・最大Turnoverを比較
-- Turnoverに取引コストを適用してGross / Net Returnを保存
-- 21・63・126・252日のrebalance頻度を比較
+- CAGR、年率ボラティリティ、Sharpe Ratio、Maximum Drawdownを計算
+- TOPIX連動ETFと同じ期間でパフォーマンスを比較
+- 相関・共分散、HHI、Effective Number of Assets、Risk Contributionを分析
+- Minimum Variance、Maximum Sharpe、Efficient Frontier、Risk Parity / ERCを計算
+- Walk-ForwardでWeight Drift、Turnover、取引コスト、Gross / Net Returnを評価
+- 21・63・126・252日のリバランス頻度を比較
+- Sample CovarianceとLedoit-Wolf ShrinkageのOOS成績・Weight安定性を比較
 
-比較する指標:
-
-- CAGR
-- 年率ボラティリティ
-- Sharpe Ratio
-- Maximum Drawdown
-
-## 使用技術
-
-- Python
-- NumPy
-- pandas
-- yfinance
-- SciPy
-- pytest
-
-## Expected Returnの前提
-
-最適化で使用する期待リターンは、過去の日次平均リターンを252取引日で年率化したhistorical mean returnです。将来のリターンを予測するものではありません。
-
-最適化では次の制約を使用します。
-
-- 空売りなし
-- レバレッジなし
-- 配分合計100%
-
-## Walk-Forward Backtest
-
-過去データだけでweightを決め、その後の未知期間で運用成績を評価します。
+## 分析条件
 
 ```text
 Estimation Window : 504 trading days
 Holding Period    : 63 trading days
-Window Type       : Rolling
-Strategies        : Equal Weight
-                    Minimum Variance
-                    Maximum Sharpe
-                    Risk Parity / ERC
+Benchmark         : 1306.T（TOPIX ETF）
 Risk-Free Rate    : 0%
+Transaction Cost  : 10 bps per turnover
 Short Selling     : No
 Leverage          : No
-Transaction Cost  : 10 bps per turnover
+Covariance        : Sample / Ledoit-Wolf
 ```
 
-完全な63日OOS windowだけを採用し、同じOOS日付のTOPIXと比較します。
+期待リターンには過去の日次平均を252取引日で年率化した値を使用します。Risk Parityは期待リターンを使わず、共分散行列から各銘柄のRisk Contributionが均等になる配分を求めます。
 
-## Realistic Backtesting
+Sample Covarianceを既定値としているため、v0.8までのWalk-Forward結果との互換性を維持しています。
 
-前回のtarget weightを保有期間中の各資産リターンで変化させ、rebalance直前のweightを復元します。そのweightと次のtarget weightの差の絶対値を合計してTurnoverを計算します。
+## サンプルポートフォリオ
 
 ```text
-Turnover = sum(abs(new target weight - pre-rebalance weight))
+7203.T  Toyota                    10%
+6758.T  Sony                      10%
+8306.T  MUFG                      10%
+9432.T  NTT                       10%
+8058.T  Mitsubishi Corporation    10%
+7974.T  Nintendo                  10%
+3003.T  HULIC                     10%
+6501.T  Hitachi                   10%
+9983.T  Fast Retailing            10%
+4661.T  Oriental Land             10%
 ```
-
-初回のTurnoverは0とし、各戦略についてrebalance別Turnover、平均Turnover、累積Turnover、最大Turnoverを出力します。
-
-```text
-Transaction Cost = Turnover * Cost Rate
-```
-
-既定のCost Rateは10bpsです。コスト控除前のGross Returnと控除後のNet Returnを両方保存します。
-
-同じ戦略を21日、63日、126日、252日のholding periodで実行し、共通OOS期間のNet CAGR、Net Sharpe、平均Turnoverを比較します。
-
-## Risk Parity / Equal Risk Contribution
-
-年率共分散行列だけを使い、全銘柄のRisk Contributionがほぼ均等になるweightを計算します。Expected Returnは使用しません。
-
-```text
-Equal Weight : Capitalを均等配分
-Risk Parity  : Riskを均等配分
-```
-
-ERCも既存戦略と同じく、空売りなし、レバレッジなし、配分合計100%です。Walk-Forwardでは各Training Windowの共分散行列からERC weightを決め、weight drift、Turnover、10bpsの取引コストを反映したNet Returnを評価します。
-
-最終比較ではEqual Weight、Minimum Variance、Maximum Sharpe、Risk Parity / ERC、TOPIXを同じOOS期間に揃えます。
-
-## サンプル構成
-
-```text
-Portfolio
-7203.T  Toyota                    Stock  10%
-6758.T  Sony                      Stock  10%
-8306.T  MUFG                      Stock  10%
-9432.T  NTT                       Stock  10%
-8058.T  Mitsubishi Corporation    Stock  10%
-7974.T  Nintendo                  Stock  10%
-3003.T  HULIC                     Stock  10%
-6501.T  Hitachi                   Stock  10%
-9983.T  Fast Retailing            Stock  10%
-4661.T  Oriental Land             Stock  10%
-
-Benchmark
-1306.T  TOPIX ETF
-```
-
-## Current Status
-
-現在はv0.8 Risk Parity / ERCです。ERC weightとRisk Contributionを計算し、weight drift、Turnover、取引コストを含むWalk-Forwardで既存3戦略およびTOPIXと比較できます。
 
 ## 実行方法
 
@@ -139,4 +60,26 @@ python main.py
 
 ```bash
 pytest
+```
+
+## ファイル構成
+
+```text
+QuantAlloc/
+├── src/
+│   ├── backtest.py
+│   ├── benchmark.py
+│   ├── covariance.py
+│   ├── data_provider.py
+│   ├── diversification.py
+│   ├── evaluation.py
+│   ├── metrics.py
+│   ├── optimization.py
+│   ├── portfolio.py
+│   ├── risk.py
+│   └── risk_parity.py
+├── tests/
+├── main.py
+├── requirements.txt
+└── README.md
 ```

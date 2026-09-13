@@ -3,3 +3,4 @@ pandas
 yfinance
 pytest
 scipy
+scikit-learn
