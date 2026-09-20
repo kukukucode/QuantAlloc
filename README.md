@@ -69,6 +69,7 @@ QuantAlloc/
 ├── src/
 │   ├── backtest.py
 │   ├── benchmark.py
+│   ├── black_litterman.py
 │   ├── covariance.py
 │   ├── data_provider.py
 │   ├── diversification.py
