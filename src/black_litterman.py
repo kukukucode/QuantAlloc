@@ -104,6 +104,82 @@ def validate_views(
     )
 
 
+def black_litterman_posterior(
+    equilibrium_returns: pd.Series,
+    covariance: pd.DataFrame,
+    view_matrix: pd.DataFrame,
+    view_returns: pd.Series,
+    view_uncertainty: pd.DataFrame,
+    tau: float = 0.05,
+) -> pd.Series:
+    """Calculate Black-Litterman posterior expected returns."""
+    validated_covariance = validate_covariance(covariance)
+    assets = validated_covariance.columns
+
+    if not isinstance(equilibrium_returns, pd.Series) or equilibrium_returns.empty:
+        raise ValueError("equilibrium_returns must be a non-empty Series")
+    if equilibrium_returns.index.has_duplicates:
+        raise ValueError("equilibrium_returns index must be unique")
+    if set(equilibrium_returns.index) != set(assets):
+        raise ValueError(
+            "equilibrium_returns and covariance assets must match"
+        )
+
+    if isinstance(tau, bool):
+        raise ValueError("tau must be a positive finite number")
+    try:
+        validated_tau = float(tau)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("tau must be a positive finite number") from exc
+    if not math.isfinite(validated_tau) or validated_tau <= 0.0:
+        raise ValueError("tau must be a positive finite number")
+
+    try:
+        validated_equilibrium_returns = pd.to_numeric(
+            equilibrium_returns,
+            errors="raise",
+        ).astype(float).reindex(assets)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("equilibrium_returns must be numeric") from exc
+    if not np.isfinite(validated_equilibrium_returns.to_numpy()).all():
+        raise ValueError(
+            "equilibrium_returns must contain only finite values"
+        )
+
+    p, q, omega = validate_views(
+        view_matrix,
+        view_returns,
+        view_uncertainty,
+        assets,
+    )
+
+    tau_covariance = validated_tau * validated_covariance.to_numpy()
+    try:
+        tau_covariance_inverse = np.linalg.inv(tau_covariance)
+        omega_inverse = np.linalg.inv(omega.to_numpy())
+        p_values = p.to_numpy()
+        posterior_precision = (
+            tau_covariance_inverse
+            + p_values.T @ omega_inverse @ p_values
+        )
+        posterior_mean = np.linalg.solve(
+            posterior_precision,
+            tau_covariance_inverse
+            @ validated_equilibrium_returns.to_numpy()
+            + p_values.T @ omega_inverse @ q.to_numpy(),
+        )
+    except np.linalg.LinAlgError as exc:
+        raise ValueError(
+            "covariance and view_uncertainty must be invertible"
+        ) from exc
+
+    return pd.Series(
+        posterior_mean,
+        index=assets,
+        name="black_litterman_return",
+    )
+
+
 def implied_equilibrium_returns(
     market_weights: pd.Series,
     covariance: pd.DataFrame,
