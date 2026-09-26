@@ -4,7 +4,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.black_litterman import implied_equilibrium_returns, validate_views
+from src.black_litterman import (
+    black_litterman_posterior,
+    implied_equilibrium_returns,
+    validate_views,
+)
 
 
 @pytest.fixture
@@ -379,3 +383,48 @@ def test_validate_views_rejects_invalid_uncertainty_matrix(
             view_uncertainty,
             assets=pd.Index(["A", "B", "C"]),
         )
+
+
+def test_black_litterman_posterior_matches_formula(
+    covariance: pd.DataFrame,
+) -> None:
+    equilibrium_returns = pd.Series({"A": 0.07, "B": 0.105})
+    view_matrix = pd.DataFrame(
+        [[1.0, 0.0]],
+        index=["view_1"],
+        columns=["A", "B"],
+    )
+    view_returns = pd.Series({"view_1": 0.10})
+    view_uncertainty = pd.DataFrame(
+        [[0.01]],
+        index=["view_1"],
+        columns=["view_1"],
+    )
+    tau = 0.05
+
+    result = black_litterman_posterior(
+        equilibrium_returns,
+        covariance,
+        view_matrix,
+        view_returns,
+        view_uncertainty,
+        tau=tau,
+    )
+
+    sigma = covariance.to_numpy()
+    pi = equilibrium_returns.to_numpy()
+    p = view_matrix.to_numpy()
+    q = view_returns.to_numpy()
+    omega = view_uncertainty.to_numpy()
+    prior_precision = np.linalg.inv(tau * sigma)
+    view_precision = np.linalg.inv(omega)
+    expected_values = np.linalg.inv(
+        prior_precision + p.T @ view_precision @ p
+    ) @ (prior_precision @ pi + p.T @ view_precision @ q)
+    expected = pd.Series(
+        expected_values,
+        index=covariance.columns,
+        name="black_litterman_return",
+    )
+
+    pd.testing.assert_series_equal(result, expected)
