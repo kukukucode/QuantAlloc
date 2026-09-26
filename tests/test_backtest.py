@@ -326,6 +326,32 @@ def test_returns_and_weights_aliases_remain_compatible(
     assert result.weights is result.target_weights
 
 
+@pytest.mark.parametrize("position", [0, 2])
+def test_backtest_rejects_losses_below_minus_one_in_training_or_oos(
+    position: int,
+) -> None:
+    returns = pd.DataFrame(
+        {"A": [0.0] * 6, "B": [0.0] * 6},
+        index=pd.bdate_range("2024-01-01", periods=6),
+    )
+    returns.iloc[position, 0] = -1.5
+    with pytest.raises(ValueError, match="less than -100%"):
+        walk_forward_backtest(
+            returns, "equal_weight", estimation_window=2, holding_period=2
+        )
+
+
+def test_backtest_allows_total_loss_of_one_asset() -> None:
+    returns = pd.DataFrame(
+        {"A": [0.0, 0.0, -1.0, 0.0], "B": [0.0] * 4},
+        index=pd.bdate_range("2024-01-01", periods=4),
+    )
+    result = walk_forward_backtest(
+        returns, "equal_weight", estimation_window=2, holding_period=2
+    )
+    assert result.gross_returns.to_list() == pytest.approx([-0.5, 0.0])
+
+
 def test_default_covariance_method_matches_explicit_sample(
     asset_returns: pd.DataFrame,
 ) -> None:

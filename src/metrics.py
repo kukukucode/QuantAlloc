@@ -24,7 +24,11 @@ def _validated_returns(returns: pd.Series) -> pd.Series:
 
 
 def _validate_periods_per_year(periods_per_year: int) -> None:
-    if isinstance(periods_per_year, bool) or periods_per_year <= 0:
+    if (
+        isinstance(periods_per_year, bool)
+        or not isinstance(periods_per_year, int)
+        or periods_per_year <= 0
+    ):
         raise ValueError("periods_per_year must be a positive integer")
 
 

@@ -70,3 +70,10 @@ def test_effective_number_decreases_for_concentrated_weights() -> None:
 
     assert hhi(weights) == pytest.approx(0.42)
     assert effective_number_of_assets(weights) == pytest.approx(1 / 0.42)
+
+
+@pytest.mark.parametrize("calculation", [hhi, effective_number_of_assets])
+def test_concentration_rejects_duplicate_weight_assets(calculation) -> None:
+    weights = pd.Series([0.2, 0.5, 0.5], index=["A", "A", "B"])
+    with pytest.raises(ValueError, match="index must be unique"):
+        calculation(weights)

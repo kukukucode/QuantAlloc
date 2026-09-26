@@ -14,6 +14,8 @@ def validate_covariance(covariance: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("covariance must be a non-empty DataFrame")
     if covariance.shape[0] != covariance.shape[1]:
         raise ValueError("covariance must be square")
+    if covariance.index.has_duplicates or covariance.columns.has_duplicates:
+        raise ValueError("covariance assets must be unique")
     if not covariance.index.equals(covariance.columns):
         raise ValueError("covariance index and columns must match")
 
@@ -45,7 +47,7 @@ def _align_weights(
         raise ValueError("weights and covariance assets must match")
 
     validated_weights = validate_weights(
-        weights.to_dict(),
+        weights,
         list(validated_covariance.columns),
     ).reindex(validated_covariance.columns)
     return validated_weights, validated_covariance
@@ -60,8 +62,13 @@ def portfolio_volatility(
         weights,
         covariance,
     )
-    values = aligned_weights.to_numpy()
-    variance = float(values @ validated_covariance.to_numpy() @ values)
+    return _portfolio_volatility(aligned_weights, validated_covariance)
+
+
+def _portfolio_volatility(weights: pd.Series, covariance: pd.DataFrame) -> float:
+    """Calculate volatility after labels and inputs have been validated."""
+    values = weights.to_numpy()
+    variance = float(values @ covariance.to_numpy() @ values)
     if variance < -1e-12:
         raise ValueError("portfolio variance must not be negative")
 
@@ -77,7 +84,7 @@ def risk_contribution(
         weights,
         covariance,
     )
-    volatility = portfolio_volatility(
+    volatility = _portfolio_volatility(
         aligned_weights,
         validated_covariance,
     )

@@ -113,6 +113,8 @@ def _validate_backtest_inputs(
         raise ValueError("asset_returns must not contain missing values")
     if not np.isfinite(validated.to_numpy()).all():
         raise ValueError("asset_returns must contain only finite values")
+    if (validated < -1.0).any().any():
+        raise ValueError("asset_returns must not be less than -100%")
 
     return validated.copy()
 

@@ -59,3 +59,13 @@ def test_max_drawdown() -> None:
     returns = pd.Series([0.20, -0.25])
 
     assert max_drawdown(returns) == pytest.approx(-0.25)
+
+
+@pytest.mark.parametrize("periods_per_year", [252.5, True, 0, -1, "252"])
+@pytest.mark.parametrize("calculation", [annualized_volatility, sharpe_ratio])
+def test_annualization_rejects_non_positive_or_non_integer_periods(
+    calculation,
+    periods_per_year: object,
+) -> None:
+    with pytest.raises(ValueError, match="positive integer"):
+        calculation(pd.Series([0.01, -0.01]), periods_per_year=periods_per_year)

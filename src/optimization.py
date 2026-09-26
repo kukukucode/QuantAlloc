@@ -1,12 +1,14 @@
 """Classical long-only mean-variance portfolio optimization."""
 
 import math
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-from src.risk import portfolio_volatility
+from src.portfolio import validate_weights
+from src.risk import portfolio_volatility, validate_covariance
 
 
 def expected_returns(
@@ -38,38 +40,16 @@ def expected_returns(
     return result
 
 
-def _validate_covariance(covariance: pd.DataFrame) -> pd.DataFrame:
-    if not isinstance(covariance, pd.DataFrame) or covariance.empty:
-        raise ValueError("covariance must be a non-empty DataFrame")
-    if covariance.shape[0] != covariance.shape[1]:
-        raise ValueError("covariance must be square")
-    if not covariance.index.equals(covariance.columns):
-        raise ValueError("covariance index and columns must match")
-
-    try:
-        validated = covariance.apply(pd.to_numeric, errors="raise").astype(float)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("covariance must be numeric") from exc
-
-    values = validated.to_numpy()
-    if not np.isfinite(values).all():
-        raise ValueError("covariance must contain only finite values")
-    if not np.allclose(values, values.T, atol=1e-10):
-        raise ValueError("covariance must be symmetric")
-    if np.linalg.eigvalsh(values).min() < -1e-10:
-        raise ValueError("covariance must be positive semidefinite")
-
-    return validated
-
-
 def _validate_optimization_inputs(
     returns: pd.Series,
     covariance: pd.DataFrame,
 ) -> tuple[pd.Series, pd.DataFrame]:
     if not isinstance(returns, pd.Series) or returns.empty:
         raise ValueError("expected_returns must be a non-empty Series")
+    if returns.index.has_duplicates:
+        raise ValueError("expected_returns index must be unique")
 
-    validated_covariance = _validate_covariance(covariance)
+    validated_covariance = validate_covariance(covariance)
     if set(returns.index) != set(validated_covariance.columns):
         raise ValueError("expected_returns and covariance assets must match")
 
@@ -85,10 +65,11 @@ def _validate_optimization_inputs(
 
 
 def _solve(
-    objective: object,
+    objective: Callable[[np.ndarray], float],
     asset_count: int,
     constraints: list[dict[str, object]],
     initial_weights: np.ndarray | None = None,
+    gradient: Callable[[np.ndarray], np.ndarray] | None = None,
 ) -> np.ndarray:
     initial = (
         np.full(asset_count, 1.0 / asset_count)
@@ -99,27 +80,51 @@ def _solve(
         objective,
         initial,
         method="SLSQP",
+        jac=gradient,
         bounds=[(0.0, 1.0)] * asset_count,
         constraints=constraints,
         options={"ftol": 1e-12, "maxiter": 1000},
     )
     if not result.success:
         raise RuntimeError(f"portfolio optimization failed: {result.message}")
+    if not np.isfinite(result.x).all():
+        raise RuntimeError("portfolio optimization returned non-finite weights")
+    if (result.x < -1e-8).any() or (result.x > 1.0 + 1e-8).any():
+        raise RuntimeError("portfolio optimization violated weight bounds")
 
     weights = np.clip(result.x, 0.0, 1.0)
-    return weights / weights.sum()
+    total_weight = float(weights.sum())
+    if total_weight <= 0.0 or not np.isclose(total_weight, 1.0, atol=1e-8, rtol=0.0):
+        raise RuntimeError(
+            "portfolio optimization violated the fully-invested constraint"
+        )
+    weights = weights / total_weight
+    for constraint in constraints:
+        residual = float(constraint["fun"](weights))
+        if not math.isfinite(residual) or abs(residual) > 1e-7:
+            raise RuntimeError("portfolio optimization violated an equality constraint")
+    if not math.isfinite(objective(weights)):
+        raise RuntimeError("portfolio optimization returned a non-finite objective")
+    return weights
+
+
+def _scaled_covariance(matrix: np.ndarray) -> np.ndarray:
+    """Remove the covariance unit scale from variance minimization."""
+    scale = float(np.max(np.abs(matrix)))
+    return matrix / scale if scale > 0.0 else matrix.copy()
 
 
 def minimum_variance_weights(covariance: pd.DataFrame) -> pd.Series:
     """Find the fully invested long-only minimum-variance portfolio."""
-    validated_covariance = _validate_covariance(covariance)
-    matrix = validated_covariance.to_numpy()
+    validated_covariance = validate_covariance(covariance)
+    matrix = _scaled_covariance(validated_covariance.to_numpy())
     asset_count = len(validated_covariance)
 
     weights = _solve(
         lambda values: float(values @ matrix @ values),
         asset_count,
         [{"type": "eq", "fun": lambda values: values.sum() - 1.0}],
+        gradient=lambda values: 2.0 * matrix @ values,
     )
     return pd.Series(
         weights,
@@ -143,6 +148,23 @@ def maximum_sharpe_weights(
 
     return_values = returns.to_numpy()
     matrix = validated_covariance.to_numpy()
+
+    excess_returns = return_values - risk_free_rate
+    if np.all(excess_returns <= 0.0):
+        # For non-positive excess returns, diversification cannot improve
+        # on the best individual Sharpe (the volatility triangle inequality).
+        variances = np.diag(matrix)
+        positive_variance = variances > 0.0
+        if not positive_variance.any():
+            raise ValueError("Sharpe ratio is undefined at zero volatility")
+        asset_sharpes = np.full(len(returns), -np.inf)
+        asset_sharpes[positive_variance] = (
+            excess_returns[positive_variance]
+            / np.sqrt(variances[positive_variance])
+        )
+        weights = np.zeros(len(returns))
+        weights[int(np.argmax(asset_sharpes))] = 1.0
+        return pd.Series(weights, index=returns.index, name="maximum_sharpe")
 
     def negative_sharpe(values: np.ndarray) -> float:
         variance = float(values @ matrix @ values)
@@ -177,7 +199,9 @@ def portfolio_performance(
     if set(weights.index) != set(returns.index):
         raise ValueError("weights and expected_returns assets must match")
 
-    aligned_weights = weights.reindex(returns.index)
+    aligned_weights = validate_weights(weights, list(returns.index)).reindex(
+        returns.index
+    )
     expected_return = float(aligned_weights @ returns)
     volatility = portfolio_volatility(
         aligned_weights,
@@ -215,6 +239,22 @@ def efficient_frontier(
     maximum_return = float(returns.max())
     targets = np.linspace(minimum_return, maximum_return, points)
 
+    if np.ptp(return_values) == 0.0:
+        # The return constraint duplicates the fully-invested constraint.
+        # Preserve the requested row count using the same efficient point.
+        volatility = portfolio_volatility(minimum_weights, validated_covariance)
+        return pd.DataFrame(
+            {
+                "return": [minimum_return] * points,
+                "volatility": [volatility] * points,
+            }
+        )
+
+    scaled_matrix = _scaled_covariance(matrix)
+    return_floor = float(return_values.min())
+    return_span = float(np.ptp(return_values))
+    normalized_returns = (return_values - return_floor) / return_span
+
     rows: list[dict[str, float]] = []
     initial = minimum_weights.to_numpy()
     for target in targets:
@@ -223,21 +263,23 @@ def efficient_frontier(
             {
                 "type": "eq",
                 "fun": lambda values, target=target: (
-                    float(values @ return_values) - target
+                    float(values @ normalized_returns)
+                    - (target - return_floor) / return_span
                 ),
             },
         ]
         weights = _solve(
-            lambda values: float(values @ matrix @ values),
+            lambda values: float(values @ scaled_matrix @ values),
             len(returns),
             constraints,
             initial,
+            gradient=lambda values: 2.0 * scaled_matrix @ values,
         )
         initial = weights
         rows.append(
             {
                 "return": float(weights @ return_values),
-                "volatility": math.sqrt(float(weights @ matrix @ weights)),
+                "volatility": math.sqrt(max(float(weights @ matrix @ weights), 0.0)),
             }
         )
 

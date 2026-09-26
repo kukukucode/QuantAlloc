@@ -15,8 +15,8 @@ from src.diversification import (
     hhi,
 )
 from src.evaluation import (
-    compare_covariance_estimators,
-    compare_rebalancing_frequencies,
+    _summarize_covariance_results,
+    _summarize_frequency_results,
     compare_strategies,
     compare_turnover,
 )
@@ -405,13 +405,44 @@ def main() -> None:
             for strategy, result in backtest_results.items()
         }
     )
-    frequency_comparison = compare_rebalancing_frequencies(
-        asset_returns,
+    frequency_results = {
+        (strategy, holding_period): (
+            backtest_results[strategy]
+            if holding_period == 63
+            else walk_forward_backtest(
+                asset_returns,
+                strategy,
+                holding_period=holding_period,
+                transaction_cost_rate=TRANSACTION_COST_RATE,
+            )
+        )
+        for strategy in STRATEGY_LABELS
+        for holding_period in (21, 63, 126, 252)
+    }
+    frequency_comparison = _summarize_frequency_results(
+        frequency_results,
+        risk_free_rate=0.0,
         transaction_cost_rate=TRANSACTION_COST_RATE,
+        covariance_method="sample",
     )
-    covariance_comparison = compare_covariance_estimators(
-        asset_returns,
+    covariance_results = {
+        (strategy, covariance_method): (
+            backtest_results[strategy]
+            if covariance_method == "sample"
+            else walk_forward_backtest(
+                asset_returns,
+                strategy,
+                covariance_method=covariance_method,
+                transaction_cost_rate=TRANSACTION_COST_RATE,
+            )
+        )
+        for strategy in ("minimum_variance", "risk_parity")
+        for covariance_method in ("sample", "ledoit_wolf")
+    }
+    covariance_comparison = _summarize_covariance_results(
+        covariance_results,
         benchmark_returns=benchmark_returns,
+        risk_free_rate=0.0,
         transaction_cost_rate=TRANSACTION_COST_RATE,
     )
 

@@ -365,3 +365,78 @@ def test_covariance_comparison_rejects_invalid_method() -> None:
             estimation_window=4,
             holding_period=2,
         )
+
+
+def test_strategy_comparison_uses_requested_risk_free_rate() -> None:
+    returns = pd.Series(
+        [0.02, -0.01, 0.03, -0.02],
+        index=pd.bdate_range("2024-01-01", periods=4),
+    )
+
+    zero_rate = compare_strategies({"Strategy": returns})
+    nonzero_rate = compare_strategies({"Strategy": returns}, risk_free_rate=0.05)
+
+    volatility = annualized_volatility(returns)
+    assert nonzero_rate.loc["Strategy", "sharpe"] == pytest.approx(
+        zero_rate.loc["Strategy", "sharpe"] - 0.05 / volatility
+    )
+    assert nonzero_rate.attrs["risk_free_rate"] == 0.05
+
+
+@pytest.mark.parametrize("comparison_kind", ["frequency", "covariance"])
+def test_oos_comparison_uses_requested_risk_free_rate(comparison_kind: str) -> None:
+    index = pd.bdate_range("2024-01-01", periods=8)
+    values = [0.01, -0.01, 0.01, -0.01, 0.02, -0.01, 0.03, -0.02]
+    asset_returns = pd.DataFrame({"A": values, "B": values}, index=index)
+    benchmark = asset_returns["A"]
+    if comparison_kind == "frequency":
+        result = compare_rebalancing_frequencies(
+            asset_returns,
+            strategies=("equal_weight",),
+            holding_periods=(2,),
+            estimation_window=4,
+            risk_free_rate=0.05,
+        )
+    else:
+        result = compare_covariance_estimators(
+            asset_returns,
+            benchmark_returns=benchmark,
+            strategies=("equal_weight",),
+            covariance_methods=("sample",),
+            holding_period=2,
+            estimation_window=4,
+            risk_free_rate=0.05,
+        )
+
+    oos = benchmark.iloc[4:]
+    expected_sharpe = (oos.mean() * 252 - 0.05) / annualized_volatility(oos)
+    assert result["net_sharpe"].to_list() == pytest.approx(
+        [expected_sharpe] * len(result)
+    )
+    assert result.attrs["risk_free_rate"] == 0.05
+
+
+def test_strategy_comparison_rejects_internal_missing_date() -> None:
+    dates = pd.bdate_range("2024-01-01", periods=3)
+    complete = pd.Series([0.01, 0.10, 0.02], index=dates)
+
+    with pytest.raises(ValueError, match="missing dates"):
+        compare_strategies({"A": complete, "B": complete.drop(dates[1])})
+
+
+def test_covariance_comparison_rejects_internal_missing_benchmark_date() -> None:
+    dates = pd.bdate_range("2024-01-01", periods=8)
+    asset_returns = pd.DataFrame(
+        {"A": [0.01, -0.01] * 4, "B": [-0.01, 0.02] * 4}, index=dates
+    )
+    benchmark = asset_returns["A"].drop(dates[5])
+
+    with pytest.raises(ValueError, match="missing dates"):
+        compare_covariance_estimators(
+            asset_returns,
+            benchmark_returns=benchmark,
+            strategies=("equal_weight",),
+            covariance_methods=("sample",),
+            estimation_window=4,
+            holding_period=2,
+        )

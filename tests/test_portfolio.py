@@ -72,3 +72,24 @@ def test_calculate_portfolio_returns() -> None:
         name="portfolio_return",
     )
     pd.testing.assert_series_equal(result, expected)
+
+
+def test_validate_weights_preserves_series_labels() -> None:
+    weights = pd.Series([0.4, 0.6], index=["B", "A"])
+    result = validate_weights(weights, ["A", "B"])
+    pd.testing.assert_series_equal(result, weights.rename("weight"))
+
+
+def test_duplicate_weight_assets_are_rejected_before_conversion() -> None:
+    weights = pd.Series([0.2, 0.5, 0.5], index=["A", "A", "B"])
+    returns = pd.DataFrame({"A": [0.1], "B": [0.0]})
+    with pytest.raises(ValueError, match="index must be unique"):
+        validate_weights(weights, ["A", "B"])
+    with pytest.raises(ValueError, match="index must be unique"):
+        calculate_portfolio_returns(returns, weights)
+
+
+def test_portfolio_returns_reject_losses_below_minus_one() -> None:
+    returns = pd.DataFrame({"A": [-1.5], "B": [0.0]})
+    with pytest.raises(ValueError, match="less than -100%"):
+        calculate_portfolio_returns(returns, pd.Series({"A": 0.5, "B": 0.5}))

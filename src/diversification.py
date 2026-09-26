@@ -55,7 +55,7 @@ def hhi(weights: pd.Series) -> float:
     if not isinstance(weights, pd.Series):
         raise TypeError("weights must be a pandas Series")
 
-    validated = validate_weights(weights.to_dict(), list(weights.index))
+    validated = validate_weights(weights, list(weights.index))
     return float(validated.pow(2).sum())
 
 

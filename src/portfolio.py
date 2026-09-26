@@ -5,14 +5,21 @@ import pandas as pd
 
 
 def validate_weights(
-    weights: dict[str, float],
+    weights: dict[str, float] | pd.Series,
     tickers: list[str],
 ) -> pd.Series:
     """Validate long-only, fully invested portfolio weights."""
-    if not weights:
+    if not isinstance(weights, (dict, pd.Series)):
+        raise TypeError("weights must be a dict or pandas Series")
+    if len(weights) == 0:
         raise ValueError("weights must not be empty")
+    if isinstance(weights, pd.Series) and weights.index.has_duplicates:
+        raise ValueError("weights index must be unique")
+    if pd.Index(tickers).has_duplicates:
+        raise ValueError("tickers must be unique")
 
-    missing_tickers = [ticker for ticker in weights if ticker not in tickers]
+    weight_assets = weights.index if isinstance(weights, pd.Series) else weights
+    missing_tickers = [ticker for ticker in weight_assets if ticker not in tickers]
     if missing_tickers:
         missing = ", ".join(missing_tickers)
         raise ValueError(f"weights contain tickers without price data: {missing}")
@@ -39,6 +46,8 @@ def calculate_asset_returns(prices: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("prices must be a non-empty DataFrame")
     if len(prices) < 2:
         raise ValueError("prices must contain at least two observations")
+    if prices.columns.has_duplicates:
+        raise ValueError("prices columns must be unique")
 
     try:
         numeric_prices = prices.apply(pd.to_numeric, errors="raise")
@@ -74,7 +83,7 @@ def calculate_portfolio_returns(
         raise TypeError("weights must be a pandas Series")
 
     validated_weights = validate_weights(
-        weights.to_dict(),
+        weights,
         list(asset_returns.columns),
     )
 
@@ -83,6 +92,8 @@ def calculate_portfolio_returns(
         raise ValueError("asset_returns must not contain missing values")
     if not np.isfinite(selected_returns.to_numpy(dtype=float)).all():
         raise ValueError("asset_returns must contain only finite values")
+    if (selected_returns < -1.0).any().any():
+        raise ValueError("asset_returns must not be less than -100%")
 
     portfolio_returns = selected_returns.dot(validated_weights)
     portfolio_returns.name = "portfolio_return"

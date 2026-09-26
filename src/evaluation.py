@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from src.backtest import BacktestResult, walk_forward_backtest
+from src.benchmark import _align_return_series
 from src.metrics import (
     annualized_volatility,
     cagr,
@@ -12,12 +13,15 @@ from src.metrics import (
 )
 
 
-def performance_summary(returns: pd.Series) -> dict[str, float]:
+def performance_summary(
+    returns: pd.Series,
+    risk_free_rate: float = 0.0,
+) -> dict[str, float]:
     """Calculate the standard performance metrics for one return series."""
     return {
         "cagr": cagr(returns),
         "volatility": annualized_volatility(returns),
-        "sharpe": sharpe_ratio(returns),
+        "sharpe": sharpe_ratio(returns, risk_free_rate=risk_free_rate),
         "max_drawdown": max_drawdown(returns),
     }
 
@@ -28,46 +32,25 @@ def _align_strategy_returns(
     if not strategy_returns:
         raise ValueError("strategy_returns must not be empty")
 
-    validated: dict[str, pd.Series] = {}
-    for name, returns in strategy_returns.items():
+    for name in strategy_returns:
         if not isinstance(name, str) or not name.strip():
             raise ValueError("strategy names must be non-empty strings")
-        if not isinstance(returns, pd.Series) or returns.empty:
-            raise ValueError(f"returns for {name} must be a non-empty Series")
-        if not isinstance(returns.index, pd.DatetimeIndex):
-            raise TypeError(f"returns for {name} must use a DatetimeIndex")
-        if returns.index.has_duplicates:
-            raise ValueError(f"returns index for {name} must be unique")
-
-        try:
-            numeric = pd.to_numeric(returns, errors="raise").astype(float)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"returns for {name} must be numeric") from exc
-        validated[name] = numeric.sort_index()
-
-    aligned = pd.concat(validated, axis=1, join="inner").sort_index()
-    if len(aligned) < 2:
-        raise ValueError(
-            "strategies must share at least two return dates"
-        )
-    if aligned.isna().any().any():
-        raise ValueError("aligned strategy returns must not contain NaN")
-    if not np.isfinite(aligned.to_numpy()).all():
-        raise ValueError(
-            "aligned strategy returns must contain only finite values"
-        )
-
-    return aligned
+    return _align_return_series(
+        strategy_returns,
+        context="strategy",
+        minimum_error="strategies must share at least two return dates",
+    )
 
 
 def compare_strategies(
     strategy_returns: dict[str, pd.Series],
+    risk_free_rate: float = 0.0,
 ) -> pd.DataFrame:
     """Compare strategies using metrics from their common date range."""
     aligned = _align_strategy_returns(strategy_returns)
     comparison = pd.DataFrame(
         {
-            name: performance_summary(aligned[name])
+            name: performance_summary(aligned[name], risk_free_rate)
             for name in aligned.columns
         }
     ).T
@@ -79,6 +62,7 @@ def compare_strategies(
         "start_date": aligned.index[0],
         "end_date": aligned.index[-1],
         "observations": len(aligned),
+        "risk_free_rate": risk_free_rate,
     }
     return comparison
 
@@ -185,6 +169,18 @@ def compare_covariance_estimators(
                 covariance_method=covariance_method,
             )
 
+    return _summarize_covariance_results(
+        results, benchmark_returns, risk_free_rate, transaction_cost_rate
+    )
+
+
+def _summarize_covariance_results(
+    results: dict[tuple[str, str], BacktestResult],
+    benchmark_returns: pd.Series | None,
+    risk_free_rate: float,
+    transaction_cost_rate: float,
+) -> pd.DataFrame:
+    """Summarize already-computed covariance backtests on a common period."""
     return_series: dict[tuple[str, str], pd.Series] = {
         key: result.net_returns for key, result in results.items()
     }
@@ -205,26 +201,18 @@ def compare_covariance_estimators(
             raise ValueError("benchmark_returns must be numeric") from exc
         return_series[benchmark_key] = numeric_benchmark.sort_index()
 
-    aligned_net_returns = pd.concat(
+    aligned_net_returns = _align_return_series(
         return_series,
-        axis=1,
-        join="inner",
-    ).sort_index()
-    if len(aligned_net_returns) < 2:
-        raise ValueError("covariance results must share at least two OOS dates")
-    if aligned_net_returns.isna().any().any():
-        raise ValueError("aligned covariance returns must not contain NaN")
-    if not np.isfinite(aligned_net_returns.to_numpy()).all():
-        raise ValueError(
-            "aligned covariance returns must contain only finite values"
-        )
+        context="covariance",
+        minimum_error="covariance results must share at least two OOS dates",
+    )
 
     start_date = aligned_net_returns.index[0]
     end_date = aligned_net_returns.index[-1]
     rows: list[dict[str, float | str]] = []
     for key, result in results.items():
         strategy, covariance_method = key
-        summary = performance_summary(aligned_net_returns[key])
+        summary = performance_summary(aligned_net_returns[key], risk_free_rate)
         in_common_period = (
             (result.turnover.index >= start_date)
             & (result.turnover.index <= end_date)
@@ -259,7 +247,9 @@ def compare_covariance_estimators(
         )
 
     if benchmark_returns is not None:
-        summary = performance_summary(aligned_net_returns[benchmark_key])
+        summary = performance_summary(
+            aligned_net_returns[benchmark_key], risk_free_rate
+        )
         rows.append(
             {
                 "strategy": benchmark_key[0],
@@ -282,6 +272,7 @@ def compare_covariance_estimators(
         "end_date": end_date,
         "observations": len(aligned_net_returns),
         "transaction_cost_rate": transaction_cost_rate,
+        "risk_free_rate": risk_free_rate,
     }
     return comparison
 
@@ -323,25 +314,30 @@ def compare_rebalancing_frequencies(
                 covariance_method=covariance_method,
             )
 
-    aligned_net_returns = pd.concat(
-        {
-            key: result.net_returns
-            for key, result in results.items()
-        },
-        axis=1,
-        join="inner",
-    ).sort_index()
-    if len(aligned_net_returns) < 2:
-        raise ValueError("frequency results must share at least two OOS dates")
-    if aligned_net_returns.isna().any().any():
-        raise ValueError("aligned frequency returns must not contain NaN")
+    return _summarize_frequency_results(
+        results, risk_free_rate, transaction_cost_rate, covariance_method
+    )
+
+
+def _summarize_frequency_results(
+    results: dict[tuple[str, int], BacktestResult],
+    risk_free_rate: float,
+    transaction_cost_rate: float,
+    covariance_method: str,
+) -> pd.DataFrame:
+    """Summarize already-computed frequency backtests on a common period."""
+    aligned_net_returns = _align_return_series(
+        {key: result.net_returns for key, result in results.items()},
+        context="frequency",
+        minimum_error="frequency results must share at least two OOS dates",
+    )
 
     start_date = aligned_net_returns.index[0]
     end_date = aligned_net_returns.index[-1]
     rows: list[dict[str, float | int | str]] = []
     for key, result in results.items():
         strategy, holding_period = key
-        summary = performance_summary(aligned_net_returns[key])
+        summary = performance_summary(aligned_net_returns[key], risk_free_rate)
         turnover = result.turnover.loc[
             (result.turnover.index >= start_date)
             & (result.turnover.index <= end_date)
@@ -371,5 +367,6 @@ def compare_rebalancing_frequencies(
         "observations": len(aligned_net_returns),
         "transaction_cost_rate": transaction_cost_rate,
         "covariance_method": covariance_method,
+        "risk_free_rate": risk_free_rate,
     }
     return comparison
