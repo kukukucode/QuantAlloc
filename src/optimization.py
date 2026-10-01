@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
+from src.black_litterman import black_litterman_posterior
 from src.portfolio import validate_weights
 from src.risk import portfolio_volatility, validate_covariance
 
@@ -183,6 +184,38 @@ def maximum_sharpe_weights(
         index=returns.index,
         name="maximum_sharpe",
     )
+
+
+def black_litterman_weights(
+    equilibrium_returns: pd.Series,
+    covariance: pd.DataFrame,
+    view_matrix: pd.DataFrame,
+    view_returns: pd.Series,
+    view_uncertainty: pd.DataFrame,
+    tau: float = 0.05,
+    risk_free_rate: float = 0.0,
+) -> pd.Series:
+    """Optimize long-only maximum-Sharpe weights using BL posterior returns.
+
+    Covariance, prior returns, view returns, and risk_free_rate must use
+    consistent annual units. Prior and view returns use the same return
+    convention as maximum_sharpe_weights, which subtracts risk_free_rate.
+    The supplied asset covariance is used for both estimation and optimization.
+    """
+    posterior_returns = black_litterman_posterior(
+        equilibrium_returns,
+        covariance,
+        view_matrix,
+        view_returns,
+        view_uncertainty,
+        tau=tau,
+    )
+    weights = maximum_sharpe_weights(
+        posterior_returns,
+        covariance,
+        risk_free_rate=risk_free_rate,
+    )
+    return weights.rename("black_litterman")
 
 
 def portfolio_performance(
