@@ -1,13 +1,16 @@
 """Walk-forward backtesting primitives for QuantAlloc."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 import math
 
 import numpy as np
 import pandas as pd
 
+from src.black_litterman import implied_equilibrium_returns
 from src.covariance import VALID_COVARIANCE_METHODS, estimate_covariance
 from src.optimization import (
+    black_litterman_weights,
     expected_returns,
     maximum_sharpe_weights,
     minimum_variance_weights,
@@ -21,8 +24,31 @@ VALID_STRATEGIES = frozenset(
         "minimum_variance",
         "maximum_sharpe",
         "risk_parity",
+        "black_litterman",
     }
 )
+
+
+@dataclass(frozen=True)
+class BlackLittermanConfig:
+    """Explicit BL inputs available when a portfolio is formed.
+
+    market_weights must be supplied by the caller. view_returns contains
+    annual views on total asset returns (P @ mu); view_uncertainty contains
+    their covariance in squared annual-return units. Relative views use
+    the difference of total returns. Static inputs must already be known
+    before the first OOS period.
+    """
+
+    market_weights: pd.Series
+    view_matrix: pd.DataFrame
+    view_returns: pd.Series
+    view_uncertainty: pd.DataFrame
+    risk_aversion: float = 2.5
+    tau: float = 0.05
+
+
+BlackLittermanProvider = Callable[[pd.DataFrame], BlackLittermanConfig]
 
 
 @dataclass(frozen=True)
@@ -124,6 +150,7 @@ def _calculate_weights(
     strategy: str,
     risk_free_rate: float,
     covariance_method: str,
+    black_litterman: BlackLittermanConfig | BlackLittermanProvider | None = None,
 ) -> pd.Series:
     """Calculate weights using training data only."""
     if strategy == "equal_weight":
@@ -142,6 +169,28 @@ def _calculate_weights(
         return minimum_variance_weights(covariance)
     if strategy == "risk_parity":
         return equal_risk_contribution_weights(covariance)
+    if strategy == "black_litterman":
+        config = (
+            black_litterman(training_returns.copy(deep=True))
+            if callable(black_litterman)
+            else black_litterman
+        )
+        if not isinstance(config, BlackLittermanConfig):
+            raise ValueError("BL inputs must resolve to a BlackLittermanConfig")
+        # Reverse optimization gives excess returns; the optimizer and
+        # configured views use total returns, so add the annual risk-free rate.
+        prior = implied_equilibrium_returns(
+            config.market_weights, covariance, config.risk_aversion
+        ) + risk_free_rate
+        return black_litterman_weights(
+            prior,
+            covariance,
+            config.view_matrix,
+            config.view_returns,
+            config.view_uncertainty,
+            tau=config.tau,
+            risk_free_rate=risk_free_rate,
+        )
 
     historical_returns = expected_returns(training_returns)
     return maximum_sharpe_weights(
@@ -181,8 +230,17 @@ def walk_forward_backtest(
     risk_free_rate: float = 0.0,
     transaction_cost_rate: float = 0.001,
     covariance_method: str = "sample",
+    *,
+    black_litterman: BlackLittermanConfig | BlackLittermanProvider | None = None,
 ) -> BacktestResult:
-    """Run a rolling, fixed-holding-period out-of-sample backtest."""
+    """Run a rolling, fixed-holding-period out-of-sample backtest.
+
+    The black_litterman strategy requires explicit BL inputs: either a
+    static BlackLittermanConfig known before the first OOS period, or a
+    provider called with a copy of each training window only. Providers
+    must not use future information from external sources or closures.
+    Covariance and the implied prior are re-estimated at every rebalance.
+    """
     validated = _validate_backtest_inputs(
         asset_returns,
         strategy,
@@ -192,6 +250,16 @@ def walk_forward_backtest(
         transaction_cost_rate,
         covariance_method,
     )
+    if strategy == "black_litterman":
+        if not isinstance(black_litterman, BlackLittermanConfig) and not callable(
+            black_litterman
+        ):
+            raise ValueError(
+                "black_litterman strategy requires a BlackLittermanConfig "
+                "or a training-window provider"
+            )
+    elif black_litterman is not None:
+        raise ValueError("BL inputs require strategy='black_litterman'")
 
     gross_return_periods: list[pd.Series] = []
     net_return_periods: list[pd.Series] = []
@@ -219,6 +287,7 @@ def walk_forward_backtest(
             strategy,
             risk_free_rate,
             covariance_method,
+            black_litterman,
         ).reindex(validated.columns)
 
         if previous_ending_weights is None:

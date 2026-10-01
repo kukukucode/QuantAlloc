@@ -47,6 +47,7 @@ def test_backtest_result_is_frozen() -> None:
         "minimum_variance",
         "maximum_sharpe",
         "risk_parity",
+        "black_litterman",
     ],
 )
 def test_validation_accepts_supported_strategies(
