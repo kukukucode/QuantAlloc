@@ -175,3 +175,31 @@ def test_performance_rejects_duplicate_weights(covariance: pd.DataFrame) -> None
     weights = pd.Series([0.2, 0.5, 0.5], index=["A", "A", "B"])
     with pytest.raises(ValueError, match="index must be unique"):
         portfolio_performance(weights, pd.Series({"A": 0.1, "B": 0.05}), covariance)
+
+
+def test_frontier_endpoint_with_tied_maximum_returns_minimizes_risk() -> None:
+    assets = ["A", "B", "C"]
+    covariance = pd.DataFrame(np.diag([0.09, 0.04, 0.16]), index=assets, columns=assets)
+    returns = pd.Series({"A": 0.01, "B": 0.20, "C": 0.20})
+
+    result = efficient_frontier(returns, covariance, points=5)
+
+    assert result.iloc[-1]["return"] == pytest.approx(0.20)
+    assert result.iloc[-1]["volatility"] == pytest.approx(np.sqrt(0.032))
+
+
+def test_frontier_handles_ten_asset_maximum_return_endpoint() -> None:
+    generator = np.random.default_rng(19)
+    daily = generator.normal(0.0005, 0.01, size=(757, 11))[:, :10]
+    prices = pd.DataFrame(100.0 * np.cumprod(1.0 + daily, axis=0))
+    asset_returns = prices.pct_change(fill_method=None).dropna()
+    covariance = asset_returns.cov() * 252
+    means = expected_returns(asset_returns)
+
+    result = efficient_frontier(means, covariance, points=10)
+
+    highest_mean_asset = means.idxmax()
+    assert result.iloc[-1]["return"] == pytest.approx(means.max())
+    assert result.iloc[-1]["volatility"] == pytest.approx(
+        np.sqrt(covariance.loc[highest_mean_asset, highest_mean_asset])
+    )

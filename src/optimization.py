@@ -287,27 +287,45 @@ def efficient_frontier(
     return_floor = float(return_values.min())
     return_span = float(np.ptp(return_values))
     normalized_returns = (return_values - return_floor) / return_span
+    # Only maximum-mean assets are feasible at the upper endpoint.
+    maximum_assets = returns.index[returns == maximum_return]
+    endpoint = minimum_variance_weights(
+        validated_covariance.loc[maximum_assets, maximum_assets]
+    ).reindex(returns.index, fill_value=0.0).to_numpy()
 
     rows: list[dict[str, float]] = []
     initial = minimum_weights.to_numpy()
     for target in targets:
         constraints = [
-            {"type": "eq", "fun": lambda values: values.sum() - 1.0},
+            {
+                "type": "eq",
+                "fun": lambda values: values.sum() - 1.0,
+                "jac": lambda values: np.ones(len(values)),
+            },
             {
                 "type": "eq",
                 "fun": lambda values, target=target: (
                     float(values @ normalized_returns)
                     - (target - return_floor) / return_span
                 ),
+                "jac": lambda values: normalized_returns,
             },
         ]
-        weights = _solve(
-            lambda values: float(values @ scaled_matrix @ values),
-            len(returns),
-            constraints,
-            initial,
-            gradient=lambda values: 2.0 * scaled_matrix @ values,
-        )
+        if target == maximum_return:
+            weights = endpoint.copy()
+        else:
+            # Start on the new target-return constraint, retaining a warm
+            # start by blending the previous solution toward the endpoint.
+            initial_return = float(initial @ return_values)
+            blend = (target - initial_return) / (maximum_return - initial_return)
+            feasible_initial = (1.0 - blend) * initial + blend * endpoint
+            weights = _solve(
+                lambda values: float(values @ scaled_matrix @ values),
+                len(returns),
+                constraints,
+                feasible_initial,
+                gradient=lambda values: 2.0 * scaled_matrix @ values,
+            )
         initial = weights
         rows.append(
             {
