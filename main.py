@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from src.backtest import BacktestResult, walk_forward_backtest
+from src.backtest import BacktestResult, BlackLittermanConfig, walk_forward_backtest
 from src.benchmark import (
     calculate_benchmark_returns,
     compare_with_benchmark,
@@ -16,6 +16,7 @@ from src.diversification import (
 )
 from src.evaluation import (
     _summarize_covariance_results,
+    _summarize_expected_return_results,
     _summarize_frequency_results,
     compare_strategies,
     compare_turnover,
@@ -63,6 +64,29 @@ COVARIANCE_LABELS = {
     "ledoit_wolf": "Ledoit-Wolf",
     "benchmark": "-",
 }
+BL_RISK_AVERSION = 2.5
+BL_TAU = 0.05
+BL_VIEW_RETURN = 0.02
+BL_VIEW_UNCERTAINTY = 0.0004
+
+
+def example_black_litterman_config(weights: pd.Series) -> BlackLittermanConfig:
+    """Build illustrative inputs known before OOS, using the first two assets."""
+    if len(weights) < 2:
+        raise ValueError("the BL example requires at least two assets")
+    view_name = f"{weights.index[0]} - {weights.index[1]}"
+    view_matrix = pd.DataFrame(0.0, index=[view_name], columns=weights.index)
+    view_matrix.iloc[0, :2] = [1.0, -1.0]
+    return BlackLittermanConfig(
+        market_weights=weights.copy(),
+        view_matrix=view_matrix,
+        view_returns=pd.Series({view_name: BL_VIEW_RETURN}),
+        view_uncertainty=pd.DataFrame(
+            [[BL_VIEW_UNCERTAINTY]], index=[view_name], columns=[view_name]
+        ),
+        risk_aversion=BL_RISK_AVERSION,
+        tau=BL_TAU,
+    )
 
 
 def print_comparison(
@@ -337,6 +361,57 @@ def print_covariance_estimator_comparison(
     print(f"Observations: {comparison.attrs['observations']}")
 
 
+def print_expected_return_comparison(
+    comparison: pd.DataFrame,
+    config: BlackLittermanConfig,
+) -> None:
+    """Print the BL assumptions and common-period model comparison."""
+    print("\nBlack-Litterman Assumptions (illustrative)")
+    print("Market weights: sample allocation; no market-cap data is fetched.")
+    print(config.market_weights.map(lambda value: f"{value:.2%}").to_string())
+    print(f"Risk aversion: {config.risk_aversion:g}; tau: {config.tau:g}")
+    for name, value in config.view_returns.items():
+        print(f"View: {name} = {value:.2%} annual total-return difference")
+    print("View uncertainty (Omega, squared annual-return units):")
+    print(config.view_uncertainty.to_string())
+
+    print("\nHistorical Mean vs Black-Litterman OOS")
+    print(
+        f"{'Model':<20}{'Net CAGR':>10}{'Vol':>10}{'Sharpe':>10}"
+        f"{'MDD':>10}{'Avg Turnover':>14}{'Sum Cost':>12}"
+    )
+    labels = {
+        "historical_mean": "Historical Mean",
+        "black_litterman": "Black-Litterman",
+        "TOPIX": "TOPIX",
+    }
+    for model, values in comparison.iterrows():
+        turnover = values["average_turnover"]
+        cost = values["total_transaction_cost"]
+        turnover_text = "-" if pd.isna(turnover) else f"{turnover:.2%}"
+        cost_text = "-" if pd.isna(cost) else f"{cost:.2%}"
+        print(
+            f"{labels[model]:<20}{values['net_cagr']:>9.2%}"
+            f"{values['net_volatility']:>9.2%}{values['net_sharpe']:>10.2f}"
+            f"{values['net_max_drawdown']:>9.2%}"
+            f"{turnover_text:>14}{cost_text:>12}"
+        )
+    start_date = comparison.attrs["start_date"].date()
+    end_date = comparison.attrs["end_date"].date()
+    print(f"\nExpected Return OOS Period: {start_date} -> {end_date}")
+    print(f"Observations: {comparison.attrs['observations']}")
+    print(
+        f"Training: {comparison.attrs['estimation_window']} days; "
+        f"holding: {comparison.attrs['holding_period']} days; "
+        f"covariance: {COVARIANCE_LABELS[comparison.attrs['covariance_method']]}"
+    )
+    print(
+        f"Risk-free rate: {comparison.attrs['risk_free_rate']:.2%}; "
+        f"transaction cost rate: {comparison.attrs['transaction_cost_rate']:.2%}"
+    )
+    print("Sum Cost adds rebalance cost fractions; TOPIX trading costs are unknown.")
+
+
 def main() -> None:
     """Compare the example portfolio with the TOPIX benchmark."""
     prices = fetch_prices(TICKERS, START_DATE, END_DATE)
@@ -445,6 +520,25 @@ def main() -> None:
         risk_free_rate=0.0,
         transaction_cost_rate=TRANSACTION_COST_RATE,
     )
+    bl_config = example_black_litterman_config(weights)
+    bl_result = walk_forward_backtest(
+        asset_returns,
+        "black_litterman",
+        transaction_cost_rate=TRANSACTION_COST_RATE,
+        black_litterman=bl_config,
+    )
+    expected_return_comparison = _summarize_expected_return_results(
+        {
+            "historical_mean": backtest_results["maximum_sharpe"],
+            "black_litterman": bl_result,
+        },
+        benchmark_returns=benchmark_returns,
+        estimation_window=504,
+        holding_period=63,
+        risk_free_rate=0.0,
+        transaction_cost_rate=TRANSACTION_COST_RATE,
+        covariance_method="sample",
+    )
 
     print_comparison(result)
     print_diversification_analysis(
@@ -473,6 +567,7 @@ def main() -> None:
     )
     print_frequency_comparison(frequency_comparison)
     print_covariance_estimator_comparison(covariance_comparison)
+    print_expected_return_comparison(expected_return_comparison, bl_config)
 
 
 if __name__ == "__main__":

@@ -162,18 +162,36 @@ def compare_expected_return_models(
         "covariance_method": covariance_method,
     }
     results = {
-        ("historical_mean", covariance_method): walk_forward_backtest(
+        "historical_mean": walk_forward_backtest(
             asset_returns, "maximum_sharpe", **common_parameters
         ),
-        ("black_litterman", covariance_method): walk_forward_backtest(
+        "black_litterman": walk_forward_backtest(
             asset_returns,
             "black_litterman",
             black_litterman=black_litterman,
             **common_parameters,
         ),
     }
+    return _summarize_expected_return_results(
+        results, benchmark_returns, **common_parameters
+    )
+
+
+def _summarize_expected_return_results(
+    results: dict[str, BacktestResult],
+    benchmark_returns: pd.Series | None,
+    estimation_window: int,
+    holding_period: int,
+    risk_free_rate: float,
+    transaction_cost_rate: float,
+    covariance_method: str,
+) -> pd.DataFrame:
+    """Summarize model results without rerunning existing backtests."""
     comparison = _summarize_covariance_results(
-        results, benchmark_returns, risk_free_rate, transaction_cost_rate
+        {(model, covariance_method): result for model, result in results.items()},
+        benchmark_returns,
+        risk_free_rate,
+        transaction_cost_rate,
     )
     comparison.index = comparison.index.droplevel("covariance")
     comparison.index.name = "expected_return_model"
