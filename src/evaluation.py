@@ -3,7 +3,12 @@
 import numpy as np
 import pandas as pd
 
-from src.backtest import BacktestResult, walk_forward_backtest
+from src.backtest import (
+    BacktestResult,
+    BlackLittermanConfig,
+    BlackLittermanProvider,
+    walk_forward_backtest,
+)
 from src.benchmark import _align_return_series
 from src.metrics import (
     annualized_volatility,
@@ -128,6 +133,59 @@ def average_target_weight_change(target_weights: pd.DataFrame) -> float:
 
     changes = validated.diff().iloc[1:].abs().sum(axis=1)
     return float(changes.mean())
+
+
+def compare_expected_return_models(
+    asset_returns: pd.DataFrame,
+    black_litterman: BlackLittermanConfig | BlackLittermanProvider,
+    benchmark_returns: pd.Series | None = None,
+    estimation_window: int = 504,
+    holding_period: int = 63,
+    risk_free_rate: float = 0.0,
+    transaction_cost_rate: float = 0.001,
+    covariance_method: str = "sample",
+) -> pd.DataFrame:
+    """Compare historical-mean and BL maximum-Sharpe portfolios out of sample.
+
+    Both models use the same training/holding windows, covariance estimator,
+    risk-free rate, and transaction costs. BL inputs follow the point-in-time
+    and annual total-return conventions of walk_forward_backtest.
+    Metrics, turnover, and summed rebalance cost fractions cover the common
+    OOS date range. Optional TOPIX returns are compared as supplied; its
+    turnover, weight changes, and transaction costs are unknown (NaN).
+    """
+    common_parameters = {
+        "estimation_window": estimation_window,
+        "holding_period": holding_period,
+        "risk_free_rate": risk_free_rate,
+        "transaction_cost_rate": transaction_cost_rate,
+        "covariance_method": covariance_method,
+    }
+    results = {
+        ("historical_mean", covariance_method): walk_forward_backtest(
+            asset_returns, "maximum_sharpe", **common_parameters
+        ),
+        ("black_litterman", covariance_method): walk_forward_backtest(
+            asset_returns,
+            "black_litterman",
+            black_litterman=black_litterman,
+            **common_parameters,
+        ),
+    }
+    comparison = _summarize_covariance_results(
+        results, benchmark_returns, risk_free_rate, transaction_cost_rate
+    )
+    comparison.index = comparison.index.droplevel("covariance")
+    comparison.index.name = "expected_return_model"
+    comparison.attrs.update(
+        {
+            "estimation_window": estimation_window,
+            "holding_period": holding_period,
+            "covariance_method": covariance_method,
+            "optimizer": "maximum_sharpe",
+        }
+    )
+    return comparison
 
 
 def compare_covariance_estimators(
