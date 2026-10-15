@@ -229,6 +229,8 @@ def portfolio_performance(
         expected_returns,
         covariance,
     )
+    if not math.isfinite(risk_free_rate):
+        raise ValueError("risk_free_rate must be finite")
     if set(weights.index) != set(returns.index):
         raise ValueError("weights and expected_returns assets must match")
 
