@@ -4,7 +4,7 @@ QuantAllocは、日本株ポートフォリオをPythonで定量分析し、TOPI
 
 松尾研究所が提供する講座で学んだ内容を実践し、理解を深める目的で作成しました。
 
-Current version: **v0.11 Visualization**
+Current version: **v0.12 Streamlit Prototype**
 
 ## 主な機能
 
@@ -15,6 +15,7 @@ Current version: **v0.11 Visualization**
 - Sample CovarianceとLedoit-Wolf ShrinkageのOOS成績・Weight安定性を比較
 - Black-Littermanのprior・P/Q/Ω検証・posteriorから配分を求め、Historical Mean / TOPIXと共通OOS期間で比較
 - 各戦略とTOPIXのNet累積リターン・Drawdown、および戦略ごとのtarget weight推移をPNGで保存
+- Streamlitで固定設定のEqual WeightとTOPIXの指標・累積リターン・Drawdown・target weightを表示
 
 ## 分析条件
 
@@ -61,6 +62,14 @@ python main.py
 成績グラフは共通OOS期間の日次リターンを複利計算し、TOPIXは取得したベンチマークのリターンをそのまま使用します（売買コストは推定しません）。
 配分ヒートマップは全リバランスのtarget weightで、日々driftした保有比率ではありません。GUIは不要です。
 
+Streamlit画面:
+
+```bash
+python -m streamlit run app.py
+```
+
+「分析を実行」で取得・計算します。画面は既存10銘柄・上記の固定条件・Equal Weightのみで、設定変更や他戦略の選択機能はありません。価格データは1時間キャッシュします。
+
 テスト:
 
 ```bash
@@ -77,6 +86,7 @@ QuantAlloc/
 │   ├── black_litterman.py
 │   ├── covariance.py
 │   ├── data_provider.py
+│   ├── dashboard.py
 │   ├── diversification.py
 │   ├── evaluation.py
 │   ├── metrics.py
@@ -84,8 +94,10 @@ QuantAlloc/
 │   ├── portfolio.py
 │   ├── risk.py
 │   ├── risk_parity.py
+│   ├── sample_config.py
 │   └── visualization.py
 ├── tests/
+├── app.py
 ├── main.py
 ├── requirements.txt
 └── README.md

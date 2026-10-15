@@ -40,7 +40,7 @@ jobs:
         run: python -m pip check
 
       - name: Compile Python sources
-        run: python -m compileall -q src tests main.py
+        run: python -m compileall -q src tests main.py app.py
 
       - name: Run test suite
         run: python -m pytest -q
