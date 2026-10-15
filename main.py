@@ -20,6 +20,7 @@ from src.evaluation import (
     _summarize_frequency_results,
     compare_strategies,
     compare_turnover,
+    turnover_summary,
 )
 from src.optimization import (
     efficient_frontier,
@@ -214,6 +215,30 @@ def print_risk_parity_analysis(
     print(allocation.map(lambda value: f"{value:.2%}").to_string())
 
 
+def _compare_oos_turnover(
+    results: dict[str, BacktestResult],
+    comparison: pd.DataFrame,
+) -> pd.DataFrame:
+    """Summarize rebalances within the displayed common OOS period."""
+    start = comparison.attrs["start_date"]
+    end = comparison.attrs["end_date"]
+    rows = {}
+    for strategy, result in results.items():
+        turnover = result.turnover.loc[start:end]
+        rows[STRATEGY_LABELS[strategy]] = (
+            turnover_summary(turnover)
+            if not turnover.empty
+            else {
+                "average_turnover": 0.0,
+                "total_turnover": 0.0,
+                "maximum_turnover": 0.0,
+            }
+        )
+    summary = pd.DataFrame.from_dict(rows, orient="index")
+    summary.index.name = "Strategy"
+    return summary
+
+
 def print_strategy_comparison(
     comparison: pd.DataFrame,
     turnover: pd.DataFrame,
@@ -279,7 +304,9 @@ def print_gross_net_comparison(
     net: pd.DataFrame,
     results: dict[str, BacktestResult],
 ) -> None:
-    """Print gross/net CAGR and accumulated transaction costs."""
+    """Print gross/net CAGR and costs within the common OOS period."""
+    start = net.attrs["start_date"]
+    end = net.attrs["end_date"]
     print("\nGross vs Net CAGR")
     print(
         f"{'Strategy':<20}{'Gross':>12}{'Net':>12}"
@@ -289,7 +316,7 @@ def print_gross_net_comparison(
         print(
             f"{label:<20}{gross.loc[label, 'cagr']:>11.2%}"
             f"{net.loc[label, 'cagr']:>11.2%}"
-            f"{results[strategy].transaction_costs.sum():>13.2%}"
+            f"{results[strategy].transaction_costs.loc[start:end].sum():>13.2%}"
         )
 
 
@@ -474,12 +501,7 @@ def main() -> None:
             "TOPIX": benchmark_returns,
         }
     )
-    turnover_comparison = compare_turnover(
-        {
-            STRATEGY_LABELS[strategy]: result.turnover
-            for strategy, result in backtest_results.items()
-        }
-    )
+    turnover_comparison = _compare_oos_turnover(backtest_results, net_comparison)
     frequency_results = {
         (strategy, holding_period): (
             backtest_results[strategy]

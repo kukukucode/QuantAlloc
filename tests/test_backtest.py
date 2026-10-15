@@ -318,6 +318,49 @@ def test_zero_cost_makes_gross_and_net_returns_equal(
     )
 
 
+@pytest.mark.parametrize("cost_rate", [0.5, 0.75])
+def test_backtest_rejects_costs_consuming_portfolio_value(
+    monkeypatch, cost_rate: float
+) -> None:
+    targets = iter([
+        pd.Series({"A": 0.0, "B": 1.0}), pd.Series({"A": 1.0, "B": 0.0})
+    ])
+    monkeypatch.setattr(
+        "src.backtest._calculate_weights", lambda *args: next(targets)
+    )
+    returns = pd.DataFrame(
+        {"A": [0.0] * 6, "B": [0.0] * 6},
+        index=pd.bdate_range("2024-01-01", periods=6),
+    )
+    with pytest.raises(
+        ValueError, match="transaction costs must be less than portfolio value"
+    ):
+        walk_forward_backtest(
+            returns, "maximum_sharpe", estimation_window=2, holding_period=2,
+            transaction_cost_rate=cost_rate,
+        )
+
+
+def test_backtest_allows_affordable_costs_at_maximum_turnover(monkeypatch) -> None:
+    targets = iter([
+        pd.Series({"A": 0.0, "B": 1.0}), pd.Series({"A": 1.0, "B": 0.0})
+    ])
+    monkeypatch.setattr(
+        "src.backtest._calculate_weights", lambda *args: next(targets)
+    )
+    returns = pd.DataFrame(
+        {"A": [0.0] * 6, "B": [0.0] * 6},
+        index=pd.bdate_range("2024-01-01", periods=6),
+    )
+    result = walk_forward_backtest(
+        returns, "maximum_sharpe", estimation_window=2, holding_period=2,
+        transaction_cost_rate=0.49,
+    )
+    assert result.turnover.iloc[1] == pytest.approx(2.0)
+    assert result.transaction_costs.iloc[1] == pytest.approx(0.98)
+    assert result.net_returns.to_list() == pytest.approx([0.0, 0.0, -0.98, 0.0])
+
+
 def test_returns_and_weights_aliases_remain_compatible(
     asset_returns: pd.DataFrame,
 ) -> None:

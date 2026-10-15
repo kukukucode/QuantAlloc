@@ -59,3 +59,83 @@ def test_main_reuses_backtests_across_comparisons(
     assert "Historical Mean" in output
     assert "Sum Cost" in output
     assert "Expected Return OOS Period" in output
+
+
+@pytest.mark.parametrize("start_position", [4, 5, 6])
+def test_oos_turnover_and_costs_cover_only_comparison_period(
+    monkeypatch, capsys, start_position: int
+) -> None:
+    dates = pd.bdate_range("2024-01-01", periods=10)
+    returns = pd.DataFrame(
+        {
+            "A": [0.0, 0.0, 0.1, 0.0, 0.1, 0.0, 0.1, 0.0, 0.0, 0.0],
+            "B": [0.0] * 10,
+        },
+        index=dates,
+    )
+    result = application.walk_forward_backtest(
+        returns, "equal_weight", estimation_window=2, holding_period=2,
+        transaction_cost_rate=0.01,
+    )
+    benchmark = pd.Series(
+        [0.01, -0.01], index=dates[start_position:start_position + 2]
+    )
+    gross = application.compare_strategies(
+        {"Equal Weight": result.gross_returns, "TOPIX": benchmark}
+    )
+    net = application.compare_strategies(
+        {"Equal Weight": result.net_returns, "TOPIX": benchmark}
+    )
+    results = {"equal_weight": result}
+    turnover = application._compare_oos_turnover(results, net)
+    start, end = benchmark.index[0], benchmark.index[-1]
+    common_turnover = result.turnover.loc[start:end]
+    expected_average = (
+        float(common_turnover.mean()) if not common_turnover.empty else 0.0
+    )
+    assert turnover.loc["Equal Weight", "average_turnover"] == pytest.approx(
+        expected_average
+    )
+    assert turnover.loc["Equal Weight", "total_turnover"] == pytest.approx(
+        common_turnover.sum()
+    )
+    expected_maximum = (
+        float(common_turnover.max()) if not common_turnover.empty else 0.0
+    )
+    assert turnover.loc["Equal Weight", "maximum_turnover"] == pytest.approx(
+        expected_maximum
+    )
+    expected_cost = result.transaction_costs.loc[start:end].sum()
+    assert expected_cost < result.transaction_costs.sum()
+
+    monkeypatch.setattr(
+        application, "STRATEGY_LABELS", {"equal_weight": "Equal Weight"}
+    )
+    application.print_strategy_comparison(net, turnover)
+    strategy_row = next(
+        line for line in capsys.readouterr().out.splitlines()
+        if line.startswith("Equal Weight")
+    )
+    assert strategy_row.split()[-1] == f"{expected_average:.2%}"
+    application.print_gross_net_comparison(gross, net, results)
+    cost_row = next(
+        line for line in capsys.readouterr().out.splitlines()
+        if line.startswith("Equal Weight")
+    )
+    assert cost_row.split()[-1] == f"{expected_cost:.2%}"
+
+
+def test_oos_turnover_is_zero_when_common_period_has_no_rebalance() -> None:
+    dates = pd.bdate_range("2024-01-01", periods=8)
+    returns = pd.DataFrame({"A": [0.0] * 8, "B": [0.0] * 8}, index=dates)
+    result = application.walk_forward_backtest(
+        returns, "equal_weight", estimation_window=2, holding_period=3
+    )
+    comparison = application.compare_strategies(
+        {
+            "Equal Weight": result.net_returns,
+            "TOPIX": pd.Series([0.01, -0.01], index=dates[3:5]),
+        }
+    )
+    turnover = application._compare_oos_turnover({"equal_weight": result}, comparison)
+    assert turnover.loc["Equal Weight"].to_list() == [0.0, 0.0, 0.0]
