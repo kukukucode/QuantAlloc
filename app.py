@@ -18,11 +18,13 @@ from src.sample_config import (
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def load_sample_prices() -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Cache successful Yahoo downloads for one hour, not display results."""
+def load_sample_prices(
+    tickers: tuple[str, ...], benchmark_ticker: str, start: str, end: str
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Cache downloads by their explicit request, not by mutable globals."""
     return (
-        fetch_prices(TICKERS, START_DATE, END_DATE),
-        fetch_prices([BENCHMARK_TICKER], START_DATE, END_DATE),
+        fetch_prices(list(tickers), start, end),
+        fetch_prices([benchmark_ticker], start, end),
     )
 
 
@@ -42,7 +44,11 @@ def display_analysis(result: SampleAnalysis) -> None:
         ("Net CAGR", "Volatility", "Sharpe", "Max Drawdown"),
     ):
         value = values[key]
-        column.metric(label, f"{value:.2f}" if key == "sharpe" else f"{value:.2%}")
+        value_text = (
+            "算出不可" if pd.isna(value)
+            else f"{value:.2f}" if key == "sharpe" else f"{value:.2%}"
+        )
+        column.metric(label, value_text)
 
     st.subheader("Equal Weight vs TOPIX")
     display_summary = summary.rename(columns={
@@ -55,7 +61,7 @@ def display_analysis(result: SampleAnalysis) -> None:
         display_summary.style.format({
             "CAGR": "{:.2%}", "Volatility": "{:.2%}",
             "Sharpe": "{:.2f}", "Max Drawdown": "{:.2%}",
-        }),
+        }, na_rep="算出不可"),
         width="stretch",
     )
     st.caption(
@@ -99,15 +105,19 @@ def main() -> None:
         st.dataframe(pd.Series(WEIGHTS, name="Target Weight").to_frame().style.format("{:.0%}"))
 
     st.caption("価格データは1時間キャッシュします。初回配分の売買コストは0です。")
+    price_request = (tuple(TICKERS), BENCHMARK_TICKER, START_DATE, END_DATE)
+    if st.session_state.get("sample_price_request") != price_request:
+        st.session_state.pop("sample_analysis", None)
     if st.button("分析を実行", type="primary"):
         # Never present a previous successful result after a failed new run.
         st.session_state.pop("sample_analysis", None)
         try:
             with st.spinner("価格データを取得し、分析しています…"):
-                asset_prices, benchmark_prices = load_sample_prices()
+                asset_prices, benchmark_prices = load_sample_prices(*price_request)
                 st.session_state["sample_analysis"] = run_sample_analysis(
                     asset_prices, benchmark_prices
                 )
+                st.session_state["sample_price_request"] = price_request
         except (ValueError, TypeError, KeyError, RuntimeError, OSError) as exc:
             st.error(f"分析できませんでした: {exc}")
 

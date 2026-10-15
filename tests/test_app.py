@@ -143,3 +143,52 @@ def test_app_reports_insufficient_history(offline_fetch, sample_market_prices, m
     assert not app.exception
     assert "567 observations" in app.error[0].value
     assert not app.metric
+
+
+def test_app_invalidates_result_and_cache_after_date_change(offline_fetch, monkeypatch) -> None:
+    app = AppTest.from_file(str(APP_PATH), default_timeout=30).run()
+    app.button[0].click().run()
+    assert len(app.metric) == 4
+    monkeypatch.setattr("src.sample_config.START_DATE", "2021-04-01")
+    app.run()
+    assert not app.metric
+    app.button[0].click().run()
+    assert not app.exception
+    assert len(offline_fetch) == 4
+    assert [call[1] for call in offline_fetch[-2:]] == ["2021-04-01"] * 2
+
+
+@pytest.mark.parametrize("changed_argument", [0, 1, 2, 3])
+def test_price_cache_key_includes_every_request_argument(monkeypatch, changed_argument) -> None:
+    import app as application
+
+    calls = []
+
+    def fetch(tickers, start, end):
+        calls.append((tuple(tickers), start, end))
+        return pd.DataFrame(100.0, index=pd.bdate_range(start, periods=2), columns=tickers)
+
+    monkeypatch.setattr(application, "fetch_prices", fetch)
+    request = [("A", "B"), "TOPIX", "2021-01-01", "2026-01-01"]
+    application.load_sample_prices(*request)
+    application.load_sample_prices(*request)
+    assert len(calls) == 2
+    request[changed_argument] = [
+        ("A", "C"), "OTHER", "2022-01-01", "2025-01-01"
+    ][changed_argument]
+    application.load_sample_prices(*request)
+    assert len(calls) == 4
+
+
+def test_app_displays_undefined_sharpe_as_unavailable(monkeypatch, sample_market_prices) -> None:
+    dates = sample_market_prices[0].index
+
+    def flat_fetch(tickers, start, end):
+        return pd.DataFrame(100.0, index=dates, columns=tickers)
+
+    monkeypatch.setattr("src.data_provider.fetch_prices", flat_fetch)
+    app = AppTest.from_file(str(APP_PATH), default_timeout=30).run()
+    app.button[0].click().run()
+    assert not app.exception
+    sharpe = next(metric for metric in app.metric if metric.label == "Sharpe")
+    assert sharpe.value == "算出不可"

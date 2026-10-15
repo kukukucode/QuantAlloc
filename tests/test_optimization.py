@@ -78,6 +78,21 @@ def test_portfolio_performance(covariance: pd.DataFrame) -> None:
     assert result["sharpe"] == pytest.approx(0.15 / (0.02**0.5))
 
 
+@pytest.mark.parametrize("risk_free_rate", [np.nan, np.inf, -np.inf])
+@pytest.mark.parametrize("zero_variance", [False, True])
+def test_portfolio_performance_rejects_nonfinite_risk_free_rate(
+    covariance: pd.DataFrame, risk_free_rate: float, zero_variance: bool
+) -> None:
+    if zero_variance:
+        covariance = covariance * 0.0
+    with pytest.raises(ValueError, match="risk_free_rate must be finite"):
+        portfolio_performance(
+            pd.Series({"A": 0.5, "B": 0.5}),
+            pd.Series({"A": 0.20, "B": 0.10}),
+            covariance, risk_free_rate=risk_free_rate,
+        )
+
+
 def test_efficient_frontier_has_requested_points(
     covariance: pd.DataFrame,
 ) -> None:
