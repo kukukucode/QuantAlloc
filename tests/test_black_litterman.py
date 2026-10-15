@@ -428,3 +428,58 @@ def test_black_litterman_posterior_matches_formula(
     )
 
     pd.testing.assert_series_equal(result, expected)
+
+
+@pytest.mark.parametrize("gap", [1e-12, 1e-14, 1e-16])
+def test_posterior_is_stable_for_nearly_singular_covariance(gap: float) -> None:
+    covariance = pd.DataFrame(
+        [[0.04, 0.04 * (1.0 - gap)], [0.04 * (1.0 - gap), 0.04]],
+        index=["A", "B"], columns=["A", "B"],
+    )
+    prior = pd.Series({"A": 0.05, "B": 0.04})
+    result = black_litterman_posterior(
+        prior, covariance,
+        pd.DataFrame([[1.0, 0.0]], index=["view"], columns=["A", "B"]),
+        pd.Series({"view": 0.10}),
+        pd.DataFrame([[0.001]], index=["view"], columns=["view"]),
+        tau=0.05,
+    )
+    # A single absolute view has an analytic Gaussian-conditioning update.
+    expected = prior + 0.05 * covariance["A"] * (0.10 - prior["A"]) / (
+        0.001 + 0.05 * covariance.loc["A", "A"]
+    )
+    pd.testing.assert_series_equal(
+        result, expected.rename("black_litterman_return"), rtol=1e-12, atol=1e-14
+    )
+
+
+def test_posterior_matches_precision_formula_with_correlated_views(
+    covariance: pd.DataFrame,
+) -> None:
+    prior = pd.Series({"A": 0.07, "B": 0.105})
+    p = pd.DataFrame(
+        [[1.0, -1.0], [1.0, 0.0]],
+        index=["relative", "absolute"], columns=covariance.columns,
+    )
+    q = pd.Series({"relative": 0.02, "absolute": 0.1})
+    omega = pd.DataFrame(
+        [[0.01, 0.002], [0.002, 0.005]], index=p.index, columns=p.index
+    )
+    prior_precision = np.linalg.inv(0.05 * covariance.to_numpy())
+    view_precision = np.linalg.inv(omega.to_numpy())
+    expected = np.linalg.solve(
+        prior_precision + p.to_numpy().T @ view_precision @ p.to_numpy(),
+        prior_precision @ prior.to_numpy()
+        + p.to_numpy().T @ view_precision @ q.to_numpy(),
+    )
+    result = black_litterman_posterior(
+        prior.reindex(["B", "A"]), covariance, p[["B", "A"]],
+        q.reindex(["absolute", "relative"]),
+        omega.reindex(index=["absolute", "relative"],
+                      columns=["absolute", "relative"]),
+    )
+    pd.testing.assert_series_equal(
+        result,
+        pd.Series(expected, index=covariance.columns, name="black_litterman_return"),
+        rtol=1e-12, atol=1e-14,
+    )

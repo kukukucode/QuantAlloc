@@ -112,7 +112,12 @@ def black_litterman_posterior(
     view_uncertainty: pd.DataFrame,
     tau: float = 0.05,
 ) -> pd.Series:
-    """Calculate Black-Litterman posterior expected returns."""
+    """Calculate posterior returns with an inverse-free conditioning update.
+
+    Covariance must remain positive definite, as required by the original
+    precision-based formulation. The update solves in view space instead
+    of inverting the asset covariance, which may be poorly conditioned.
+    """
     validated_covariance = validate_covariance(covariance)
     assets = validated_covariance.columns
 
@@ -155,18 +160,14 @@ def black_litterman_posterior(
 
     tau_covariance = validated_tau * validated_covariance.to_numpy()
     try:
-        tau_covariance_inverse = np.linalg.inv(tau_covariance)
-        omega_inverse = np.linalg.inv(omega.to_numpy())
+        # Preserve rejection of singular covariance without forming its inverse.
+        np.linalg.cholesky(tau_covariance)
         p_values = p.to_numpy()
-        posterior_precision = (
-            tau_covariance_inverse
-            + p_values.T @ omega_inverse @ p_values
-        )
-        posterior_mean = np.linalg.solve(
-            posterior_precision,
-            tau_covariance_inverse
-            @ validated_equilibrium_returns.to_numpy()
-            + p_values.T @ omega_inverse @ q.to_numpy(),
+        prior = validated_equilibrium_returns.to_numpy()
+        covariance_with_views = tau_covariance @ p_values.T
+        view_covariance = omega.to_numpy() + p_values @ covariance_with_views
+        posterior_mean = prior + covariance_with_views @ np.linalg.solve(
+            view_covariance, q.to_numpy() - p_values @ prior,
         )
     except np.linalg.LinAlgError as exc:
         raise ValueError(

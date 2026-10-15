@@ -240,6 +240,8 @@ def walk_forward_backtest(
     provider called with a copy of each training window only. Providers
     must not use future information from external sources or closures.
     Covariance and the implied prior are re-estimated at every rebalance.
+    A rebalance is rejected if its transaction costs consume the full
+    portfolio value or more; the net portfolio must remain investable.
     """
     validated = _validate_backtest_inputs(
         asset_returns,
@@ -298,6 +300,11 @@ def walk_forward_backtest(
             before_rebalance = previous_ending_weights
             turnover = float((weights - before_rebalance).abs().sum())
         transaction_cost = turnover * transaction_cost_rate
+        if transaction_cost >= 1.0:
+            raise ValueError(
+                "transaction costs must be less than portfolio value "
+                f"at rebalance {test.index[0]}"
+            )
 
         gross_returns, ending_weights = _holding_period_returns(weights, test)
         gross_returns.name = strategy
