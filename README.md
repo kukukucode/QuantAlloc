@@ -4,7 +4,7 @@ QuantAllocは、日本株ポートフォリオをPythonで定量分析し、TOPI
 
 松尾研究所が提供する講座で学んだ内容を実践し、理解を深める目的で作成しました。
 
-Current version: **v0.10 Black-Litterman**
+Current version: **v0.11 Visualization**
 
 ## 主な機能
 
@@ -14,6 +14,7 @@ Current version: **v0.10 Black-Litterman**
 - Walk-ForwardでWeight Drift、Turnover、コスト、Gross / Net、21・63・126・252日のリバランス頻度を評価
 - Sample CovarianceとLedoit-Wolf ShrinkageのOOS成績・Weight安定性を比較
 - Black-Littermanのprior・P/Q/Ω検証・posteriorから配分を求め、Historical Mean / TOPIXと共通OOS期間で比較
+- 各戦略とTOPIXのNet累積リターン・Drawdown、および戦略ごとのtarget weight推移をPNGで保存
 
 ## 分析条件
 
@@ -56,6 +57,10 @@ python -m pip install -r requirements.txt
 python main.py
 ```
 
+`outputs/charts/`にNet累積リターン、Drawdown、5戦略の配分ヒートマップを保存します。
+成績グラフは共通OOS期間の日次リターンを複利計算し、TOPIXは取得したベンチマークのリターンをそのまま使用します（売買コストは推定しません）。
+配分ヒートマップは全リバランスのtarget weightで、日々driftした保有比率ではありません。GUIは不要です。
+
 テスト:
 
 ```bash
@@ -78,7 +83,8 @@ QuantAlloc/
 │   ├── optimization.py
 │   ├── portfolio.py
 │   ├── risk.py
-│   └── risk_parity.py
+│   ├── risk_parity.py
+│   └── visualization.py
 ├── tests/
 ├── main.py
 ├── requirements.txt

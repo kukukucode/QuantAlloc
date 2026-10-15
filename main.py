@@ -1,5 +1,7 @@
 """Run the QuantAlloc portfolio and benchmark comparison."""
 
+from pathlib import Path
+
 import pandas as pd
 
 from src.backtest import BacktestResult, BlackLittermanConfig, walk_forward_backtest
@@ -36,6 +38,11 @@ from src.portfolio import (
 )
 from src.risk import risk_contribution
 from src.risk_parity import equal_risk_contribution_weights
+from src.visualization import (
+    plot_cumulative_returns,
+    plot_drawdowns,
+    plot_weight_history,
+)
 
 WEIGHTS = {
     "7203.T": 0.10,
@@ -54,6 +61,7 @@ BENCHMARK_TICKER = "1306.T"
 START_DATE = "2021-01-01"
 END_DATE = "2026-01-01"
 TRANSACTION_COST_RATE = 0.001
+CHART_OUTPUT_DIR = Path("outputs/charts")
 STRATEGY_LABELS = {
     "equal_weight": "Equal Weight",
     "minimum_variance": "Minimum Variance",
@@ -590,6 +598,28 @@ def main() -> None:
     print_frequency_comparison(frequency_comparison)
     print_covariance_estimator_comparison(covariance_comparison)
     print_expected_return_comparison(expected_return_comparison, bl_config)
+
+    chart_results = backtest_results | {"black_litterman": bl_result}
+    chart_labels = STRATEGY_LABELS | {"black_litterman": "Black-Litterman"}
+    chart_returns = {
+        chart_labels[strategy]: backtest.net_returns
+        for strategy, backtest in chart_results.items()
+    } | {"TOPIX": benchmark_returns}
+    chart_paths = [
+        plot_cumulative_returns(chart_returns, CHART_OUTPUT_DIR / "net_cumulative_returns.png"),
+        plot_drawdowns(chart_returns, CHART_OUTPUT_DIR / "net_drawdowns.png"),
+    ]
+    chart_paths.extend(
+        plot_weight_history(
+            backtest.target_weights,
+            CHART_OUTPUT_DIR / f"weights_{strategy}.png",
+            title=f"{chart_labels[strategy]}: Target Weights by Rebalance",
+        )
+        for strategy, backtest in chart_results.items()
+    )
+    print("\nSaved charts:")
+    for path in chart_paths:
+        print(path)
 
 
 if __name__ == "__main__":

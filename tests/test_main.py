@@ -9,7 +9,7 @@ import main as application
 
 @pytest.mark.parametrize("use_sample_portfolio", [False, True])
 def test_main_reuses_backtests_across_comparisons(
-    monkeypatch, capsys, use_sample_portfolio: bool
+    monkeypatch, capsys, tmp_path, use_sample_portfolio: bool
 ) -> None:
     assets = application.TICKERS if use_sample_portfolio else ["A", "B", "C"]
     symbols = assets + [application.BENCHMARK_TICKER]
@@ -21,12 +21,15 @@ def test_main_reuses_backtests_across_comparisons(
     )
     monkeypatch.setattr(application, "WEIGHTS", dict.fromkeys(assets, 1.0 / len(assets)))
     monkeypatch.setattr(application, "TICKERS", assets)
+    monkeypatch.setattr(application, "CHART_OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(
         application, "fetch_prices", lambda tickers, start, end: prices[tickers].copy()
     )
     original_backtest = application.walk_forward_backtest
     calls = []
     bl_configs = []
+    chart_backtests = {}
+    chart_inputs = {}
 
     def recording_backtest(asset_returns, strategy, **kwargs):
         if strategy == "black_litterman":
@@ -38,14 +41,33 @@ def test_main_reuses_backtests_across_comparisons(
                 kwargs.get("covariance_method", "sample"),
             )
         )
-        return original_backtest(asset_returns, strategy, **kwargs)
+        result = original_backtest(asset_returns, strategy, **kwargs)
+        if kwargs.get("holding_period", 63) == 63 and kwargs.get(
+            "covariance_method", "sample"
+        ) == "sample":
+            chart_backtests[strategy] = result
+        return result
 
     monkeypatch.setattr(application, "walk_forward_backtest", recording_backtest)
+    original_plot = application.plot_cumulative_returns
+
+    def recording_plot(strategy_returns, output_path):
+        chart_inputs.update(strategy_returns)
+        return original_plot(strategy_returns, output_path)
+
+    monkeypatch.setattr(application, "plot_cumulative_returns", recording_plot)
 
     application.main()
 
     assert len(calls) == len(set(calls)) == 19
     assert len(bl_configs) == 1
+    for strategy, label in (
+        application.STRATEGY_LABELS | {"black_litterman": "Black-Litterman"}
+    ).items():
+        pd.testing.assert_series_equal(
+            chart_inputs[label], chart_backtests[strategy].net_returns
+        )
+    assert "TOPIX" in chart_inputs
     config = bl_configs[0]
     assert config.market_weights.to_list() == pytest.approx([1.0 / len(assets)] * len(assets))
     assert config.view_matrix.iloc[0].to_list() == [1.0, -1.0] + [0.0] * (len(assets) - 2)
@@ -59,6 +81,14 @@ def test_main_reuses_backtests_across_comparisons(
     assert "Historical Mean" in output
     assert "Sum Cost" in output
     assert "Expected Return OOS Period" in output
+    assert "Saved charts:" in output
+    expected_charts = {"net_cumulative_returns.png", "net_drawdowns.png"} | {
+        f"weights_{strategy}.png"
+        for strategy in (*application.STRATEGY_LABELS, "black_litterman")
+    }
+    assert {path.name for path in tmp_path.glob("*.png")} == expected_charts
+    for path in tmp_path.glob("*.png"):
+        assert path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
 
 
 @pytest.mark.parametrize("start_position", [4, 5, 6])
