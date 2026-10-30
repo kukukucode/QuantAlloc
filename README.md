@@ -4,7 +4,7 @@ QuantAllocは、日本株ポートフォリオをPythonで定量分析し、TOPI
 
 松尾研究所が提供する講座で学んだ内容を実践し、理解を深める目的で作成しました。
 
-Current version: **v0.12 Streamlit Prototype**
+Current version: **v0.13 Bootstrap Robustness**
 
 ## 主な機能
 
@@ -16,6 +16,8 @@ Current version: **v0.12 Streamlit Prototype**
 - Black-Littermanのprior・P/Q/Ω検証・posteriorから配分を求め、Historical Mean / TOPIXと共通OOS期間で比較
 - 各戦略とTOPIXのNet累積リターン・Drawdown、および戦略ごとのtarget weight推移をPNGで保存
 - Streamlitで固定設定のEqual WeightとTOPIXの指標・累積リターン・Drawdown・target weightを表示
+
+- i.i.d. Bootstrapによる固定配分ポートフォリオのCAGR・Volatility・Sharpe・Max Drawdownの頑健性分析
 
 ## 分析条件
 
@@ -35,6 +37,8 @@ Historical Meanは過去の日次平均を252取引日で年率化します。Bl
 BLのサンプルは**仮定の例**です。market weightsは下記の10銘柄均等配分で、時価総額データは取得しません。viewはToyota − Sonyの年率リターン差2%、δ=2.5、τ=0.05、Ω=0.0004です。Qは年率の総リターンに対するview、Ωはその不確実性の共分散です。
 
 BL入力は固定設定または学習期間だけを受け取る関数で渡せます。market weightsとviewにはリバランス時点で利用可能な情報を使用してください。初回配分のコストは0、Sum Costは各リバランスのコスト率の合計です。TOPIXの売買量・コストは推定せず「-」で表示します。
+
+Bootstrapは日次リターンの行を復元抽出し、固定配分で1,000回評価します。2.5%点・中央値・97.5%点を表示します。これはin-sample分析であり、将来の成績予測ではありません。
 
 ## サンプルポートフォリオ
 
