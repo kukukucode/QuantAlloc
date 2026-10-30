@@ -43,6 +43,7 @@ from src.sample_config import (
     BENCHMARK_TICKER,
     END_DATE,
     START_DATE,
+    STRATEGY_LABELS,
     TICKERS,
     TRANSACTION_COST_RATE,
     WEIGHTS,
@@ -54,12 +55,6 @@ from src.visualization import (
 )
 
 CHART_OUTPUT_DIR = Path("outputs/charts")
-STRATEGY_LABELS = {
-    "equal_weight": "Equal Weight",
-    "minimum_variance": "Minimum Variance",
-    "maximum_sharpe": "Maximum Sharpe",
-    "risk_parity": "Risk Parity",
-}
 COVARIANCE_LABELS = {
     "sample": "Sample",
     "ledoit_wolf": "Ledoit-Wolf",

@@ -8,7 +8,7 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from src.dashboard import run_sample_analysis
-from src.sample_config import BENCHMARK_TICKER, END_DATE, START_DATE, TICKERS
+from src.sample_config import BENCHMARK_TICKER, END_DATE, START_DATE, STRATEGY_LABELS, TICKERS
 
 
 APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
@@ -46,10 +46,12 @@ def test_app_waits_for_explicit_run(offline_fetch) -> None:
     assert not app.metric
     assert offline_fetch == []
     assert app.info
+    assert app.selectbox[0].options == list(STRATEGY_LABELS.values())
 
 
+@pytest.mark.parametrize("strategy", list(STRATEGY_LABELS))
 def test_app_displays_net_metrics_and_percentage_charts(
-    offline_fetch, sample_market_prices, monkeypatch
+    offline_fetch, sample_market_prices, monkeypatch, strategy
 ) -> None:
     charts = []
     original_line_chart = st.line_chart
@@ -60,14 +62,18 @@ def test_app_displays_net_metrics_and_percentage_charts(
 
     monkeypatch.setattr(st, "line_chart", recording_chart)
     app = AppTest.from_file(str(APP_PATH), default_timeout=30).run()
+    app.selectbox[0].select(strategy).run()
+    assert offline_fetch == []
     app.button[0].click().run()
     assert not app.exception
     assert not app.error
     assert len(app.metric) == 4
-    expected = run_sample_analysis(*sample_market_prices)
-    assert app.metric[0].value == f"{expected.performance.loc['Equal Weight', 'cagr']:.2%}"
+    label = STRATEGY_LABELS[strategy]
+    expected = run_sample_analysis(*sample_market_prices, strategy)
+    assert app.metric[0].value == f"{expected.performance.loc[label, 'cagr']:.2%}"
     table = next(frame.value for frame in app.dataframe if "CAGR" in frame.value.columns)
-    assert table.index.to_list() == ["Equal Weight", "TOPIX"]
+    assert table.index.to_list() == [label, "TOPIX"]
+    assert any(heading.value == f"{label} vs TOPIX" for heading in app.subheader)
     assert table.loc["TOPIX", "CAGR"] == pytest.approx(expected.performance.loc["TOPIX", "cagr"])
     assert len(charts) == 2
     pd.testing.assert_frame_equal(charts[0], expected.cumulative_returns * 100.0)
@@ -192,3 +198,46 @@ def test_app_displays_undefined_sharpe_as_unavailable(monkeypatch, sample_market
     assert not app.exception
     sharpe = next(metric for metric in app.metric if metric.label == "Sharpe")
     assert sharpe.value == "算出不可"
+
+
+def test_strategy_change_clears_old_result_without_refetching(offline_fetch, monkeypatch) -> None:
+    calls = []
+
+    def recording_analysis(asset_prices, benchmark_prices, strategy):
+        calls.append(strategy)
+        return run_sample_analysis(asset_prices, benchmark_prices, strategy)
+
+    monkeypatch.setattr("src.dashboard.run_sample_analysis", recording_analysis)
+    app = AppTest.from_file(str(APP_PATH), default_timeout=30).run()
+    app.button[0].click().run()
+    assert len(app.metric) == 4
+    app.selectbox[0].select("minimum_variance").run()
+    assert not app.metric
+    assert calls == ["equal_weight"]
+    assert len(offline_fetch) == 2
+    app.button[0].click().run()
+    assert not app.exception
+    assert len(app.metric) == 4
+    assert calls == ["equal_weight", "minimum_variance"]
+    assert len(offline_fetch) == 2
+    assert app.session_state["sample_analysis"].strategy == "minimum_variance"
+
+
+def test_failed_strategy_is_reported_without_fallback(offline_fetch, monkeypatch) -> None:
+    app = AppTest.from_file(str(APP_PATH), default_timeout=30).run()
+    app.button[0].click().run()
+    assert len(app.metric) == 4
+    attempts = []
+
+    def fail_analysis(asset_prices, benchmark_prices, strategy):
+        attempts.append(strategy)
+        raise RuntimeError("portfolio optimization failed")
+
+    monkeypatch.setattr("src.dashboard.run_sample_analysis", fail_analysis)
+    app.selectbox[0].select("minimum_variance").run()
+    app.button[0].click().run()
+    assert not app.exception
+    assert "portfolio optimization failed" in app.error[0].value
+    assert attempts == ["minimum_variance"]
+    assert not app.metric
+    assert "sample_analysis" not in app.session_state

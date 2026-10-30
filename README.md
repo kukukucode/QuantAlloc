@@ -4,7 +4,7 @@ QuantAllocは、日本株ポートフォリオをPythonで定量分析し、TOPI
 
 松尾研究所が提供する講座で学んだ内容を実践し、理解を深める目的で作成しました。
 
-Current version: **v0.13 Bootstrap Robustness**
+Current version: **v0.14 Strategy Selection**
 
 ## 主な機能
 
@@ -15,7 +15,7 @@ Current version: **v0.13 Bootstrap Robustness**
 - Sample CovarianceとLedoit-Wolf ShrinkageのOOS成績・Weight安定性を比較
 - Black-Littermanのprior・P/Q/Ω検証・posteriorから配分を求め、Historical Mean / TOPIXと共通OOS期間で比較
 - 各戦略とTOPIXのNet累積リターン・Drawdown、および戦略ごとのtarget weight推移をPNGで保存
-- Streamlitで固定設定のEqual WeightとTOPIXの指標・累積リターン・Drawdown・target weightを表示
+- Streamlitで4戦略を選択し、TOPIXとの指標・累積リターン・Drawdown・target weightを表示
 
 - i.i.d. Bootstrapによる固定配分ポートフォリオのCAGR・Volatility・Sharpe・Max Drawdownの頑健性分析
 
@@ -72,7 +72,8 @@ Streamlit画面:
 python -m streamlit run app.py
 ```
 
-「分析を実行」で取得・計算します。画面は既存10銘柄・上記の固定条件・Equal Weightのみで、設定変更や他戦略の選択機能はありません。価格データは1時間キャッシュします。
+Equal Weight／Minimum Variance／Maximum Sharpe／Risk Parityから戦略を選び、「分析を実行」で取得・計算します。銘柄・期間・学習／保有日数・売買コストは固定で、最適化にはSample共分散を使います。BLは画面では選択できません。
+価格は取得条件ごとに1時間キャッシュし、戦略切り替えでは再取得しません。選択を変えると前の結果を消し、再実行を待ちます。最適化失敗時に別戦略へ切り替えることはありません。
 
 テスト:
 

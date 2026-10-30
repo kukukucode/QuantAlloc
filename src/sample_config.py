@@ -19,3 +19,9 @@ END_DATE = "2026-01-01"
 ESTIMATION_WINDOW = 504
 HOLDING_PERIOD = 63
 TRANSACTION_COST_RATE = 0.001
+STRATEGY_LABELS = {
+    "equal_weight": "Equal Weight",
+    "minimum_variance": "Minimum Variance",
+    "maximum_sharpe": "Maximum Sharpe",
+    "risk_parity": "Risk Parity",
+}

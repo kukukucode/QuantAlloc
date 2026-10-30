@@ -1,4 +1,4 @@
-"""Pure analysis orchestration for the fixed Equal Weight dashboard."""
+"""Pure analysis orchestration for the strategy-selection dashboard."""
 
 from dataclasses import dataclass
 
@@ -12,6 +12,7 @@ from src.sample_config import (
     BENCHMARK_TICKER,
     ESTIMATION_WINDOW,
     HOLDING_PERIOD,
+    STRATEGY_LABELS,
     TRANSACTION_COST_RATE,
 )
 from src.visualization import cumulative_return_paths, drawdown_paths
@@ -25,26 +26,31 @@ class SampleAnalysis:
     performance: pd.DataFrame
     cumulative_returns: pd.DataFrame
     drawdowns: pd.DataFrame
+    strategy: str = "equal_weight"
 
 
 def run_sample_analysis(
     asset_prices: pd.DataFrame,
     benchmark_prices: pd.DataFrame,
+    strategy: str = "equal_weight",
 ) -> SampleAnalysis:
     """Reuse the existing engine and metrics on one common OOS period."""
+    if strategy not in STRATEGY_LABELS:
+        raise ValueError(f"unsupported dashboard strategy: {strategy}")
     asset_returns = calculate_asset_returns(asset_prices)
     benchmark_returns = calculate_benchmark_returns(benchmark_prices, BENCHMARK_TICKER)
     backtest = walk_forward_backtest(
         asset_returns,
-        "equal_weight",
+        strategy,
         estimation_window=ESTIMATION_WINDOW,
         holding_period=HOLDING_PERIOD,
         transaction_cost_rate=TRANSACTION_COST_RATE,
     )
-    returns = {"Equal Weight": backtest.net_returns, "TOPIX": benchmark_returns}
+    returns = {STRATEGY_LABELS[strategy]: backtest.net_returns, "TOPIX": benchmark_returns}
     return SampleAnalysis(
         backtest=backtest,
         performance=compare_strategies(returns),
         cumulative_returns=cumulative_return_paths(returns),
         drawdowns=drawdown_paths(returns),
+        strategy=strategy,
     )
