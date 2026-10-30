@@ -42,5 +42,11 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q src tests main.py app.py
 
+      - name: Ruff lint and format
+        run: |
+          python -m pip install ruff
+          python -m ruff check src/bootstrap.py tests/test_bootstrap.py
+          python -m ruff format --check src/bootstrap.py tests/test_bootstrap.py
+
       - name: Run test suite
         run: python -m pytest -q

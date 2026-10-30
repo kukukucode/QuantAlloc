@@ -5,6 +5,7 @@ import pandas as pd
 from src.portfolio import calculate_portfolio_returns
 from src.evaluation import performance_summary
 
+
 def bootstrap_indices(
     n_observations: int,
     rng: np.random.Generator,
@@ -22,6 +23,7 @@ def bootstrap_indices(
         high=n_observations,
         size=n_observations,
     )
+
 
 def resample_asset_returns(
     asset_returns: pd.DataFrame,
@@ -61,6 +63,7 @@ def resample_asset_returns(
 
     return resampled
 
+
 def bootstrap_portfolio_metrics(
     asset_returns: pd.DataFrame,
     weights: pd.Series,
@@ -82,6 +85,7 @@ def bootstrap_portfolio_metrics(
         portfolio_returns,
         risk_free_rate=risk_free_rate,
     )
+
 
 def bootstrap_metric_distribution(
     asset_returns: pd.DataFrame,
@@ -115,6 +119,7 @@ def bootstrap_metric_distribution(
 
     return distribution
 
+
 def bootstrap_metric_intervals(
     distribution: pd.DataFrame,
 ) -> pd.DataFrame:
@@ -122,9 +127,7 @@ def bootstrap_metric_intervals(
     if not isinstance(distribution, pd.DataFrame) or distribution.empty:
         raise ValueError("distribution must be a non-empty DataFrame")
 
-    intervals = distribution.quantile(
-        [0.025, 0.5, 0.975]
-    ).T
+    intervals = distribution.quantile([0.025, 0.5, 0.975]).T
 
     intervals.columns = [
         "lower_2_5",
@@ -142,9 +145,7 @@ def bootstrap_metric_intervals(
     if not isinstance(distribution, pd.DataFrame) or distribution.empty:
         raise ValueError("distribution must be a non-empty DataFrame")
 
-    intervals = distribution.quantile(
-        [0.025, 0.5, 0.975]
-    ).T
+    intervals = distribution.quantile([0.025, 0.5, 0.975]).T
 
     intervals.columns = [
         "lower_2_5",

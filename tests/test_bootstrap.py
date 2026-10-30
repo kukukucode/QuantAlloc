@@ -57,6 +57,7 @@ def test_bootstrap_indices_rejects_invalid_size(
     with pytest.raises(ValueError):
         bootstrap_indices(n_observations, rng)
 
+
 def test_resample_asset_returns_reproducible() -> None:
     returns = pd.DataFrame(
         {
@@ -76,6 +77,7 @@ def test_resample_asset_returns_reproducible() -> None:
     )
 
     pd.testing.assert_frame_equal(result1, result2)
+
 
 def test_resample_asset_returns_preserves_complete_rows() -> None:
     returns = pd.DataFrame(
@@ -102,6 +104,7 @@ def test_resample_asset_returns_preserves_complete_rows() -> None:
 
     pd.testing.assert_frame_equal(result, expected)
 
+
 def test_bootstrap_portfolio_metrics() -> None:
     returns = pd.DataFrame(
         {
@@ -111,10 +114,12 @@ def test_bootstrap_portfolio_metrics() -> None:
         index=pd.bdate_range("2024-01-01", periods=6),
     )
 
-    weights = pd.Series({
-        "Toyota": 0.6,
-        "Sony": 0.4,
-    })
+    weights = pd.Series(
+        {
+            "Toyota": 0.6,
+            "Sony": 0.4,
+        }
+    )
 
     seed = 42
 
@@ -146,6 +151,7 @@ def test_bootstrap_portfolio_metrics() -> None:
         "max_drawdown",
     }
 
+
 def test_bootstrap_metric_distribution() -> None:
     returns = pd.DataFrame(
         {
@@ -155,10 +161,12 @@ def test_bootstrap_metric_distribution() -> None:
         index=pd.bdate_range("2024-01-01", periods=6),
     )
 
-    weights = pd.Series({
-        "Toyota": 0.6,
-        "Sony": 0.4,
-    })
+    weights = pd.Series(
+        {
+            "Toyota": 0.6,
+            "Sony": 0.4,
+        }
+    )
 
     result1 = bootstrap_metric_distribution(
         returns,
@@ -184,11 +192,14 @@ def test_bootstrap_metric_distribution() -> None:
 
     pd.testing.assert_frame_equal(result1, result2)
 
+
 def test_bootstrap_metric_intervals() -> None:
-    distribution = pd.DataFrame({
-        "sharpe": [0.0, 1.0, 2.0],
-        "cagr": [0.1, 0.2, 0.3],
-    })
+    distribution = pd.DataFrame(
+        {
+            "sharpe": [0.0, 1.0, 2.0],
+            "cagr": [0.1, 0.2, 0.3],
+        }
+    )
 
     result = bootstrap_metric_intervals(distribution)
 
@@ -198,12 +209,8 @@ def test_bootstrap_metric_intervals() -> None:
         "upper_97_5",
     ]
 
-    assert result.loc["sharpe"].to_numpy() == pytest.approx(
-        [0.05, 1.0, 1.95]
-    )
-    assert result.loc["cagr"].to_numpy() == pytest.approx(
-        [0.105, 0.2, 0.295]
-    )
+    assert result.loc["sharpe"].to_numpy() == pytest.approx([0.05, 1.0, 1.95])
+    assert result.loc["cagr"].to_numpy() == pytest.approx([0.105, 0.2, 0.295])
 
 
 def test_bootstrap_portfolio_summary() -> None:
@@ -223,9 +230,7 @@ def test_bootstrap_portfolio_summary() -> None:
         seed=42,
     )
 
-    observed = performance_summary(
-        calculate_portfolio_returns(returns, weights)
-    )
+    observed = performance_summary(calculate_portfolio_returns(returns, weights))
 
     assert result.columns.tolist() == [
         "observed",
