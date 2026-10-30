@@ -2,8 +2,9 @@
 
 import numpy as np
 import pandas as pd
-from src.portfolio import calculate_portfolio_returns
+
 from src.evaluation import performance_summary
+from src.portfolio import calculate_portfolio_returns
 
 
 def bootstrap_indices(
@@ -118,24 +119,6 @@ def bootstrap_metric_distribution(
     distribution.index.name = "bootstrap_sample"
 
     return distribution
-
-
-def bootstrap_metric_intervals(
-    distribution: pd.DataFrame,
-) -> pd.DataFrame:
-    """Calculate percentile ranges for bootstrap metrics."""
-    if not isinstance(distribution, pd.DataFrame) or distribution.empty:
-        raise ValueError("distribution must be a non-empty DataFrame")
-
-    intervals = distribution.quantile([0.025, 0.5, 0.975]).T
-
-    intervals.columns = [
-        "lower_2_5",
-        "median",
-        "upper_97_5",
-    ]
-
-    return intervals
 
 
 def bootstrap_metric_intervals(

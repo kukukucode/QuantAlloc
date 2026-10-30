@@ -3,17 +3,17 @@
 import numpy as np
 import pandas as pd
 import pytest
-from src.portfolio import calculate_portfolio_returns
-from src.evaluation import performance_summary
 
 from src.bootstrap import (
-    bootstrap_portfolio_summary,
-    bootstrap_metric_intervals,
     bootstrap_indices,
-    resample_asset_returns,
-    bootstrap_portfolio_metrics,
     bootstrap_metric_distribution,
+    bootstrap_metric_intervals,
+    bootstrap_portfolio_metrics,
+    bootstrap_portfolio_summary,
+    resample_asset_returns,
 )
+from src.evaluation import performance_summary
+from src.portfolio import calculate_portfolio_returns
 
 
 def test_bootstrap_indices_reproducible() -> None:
