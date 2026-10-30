@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.backtest import BacktestResult, BlackLittermanConfig, walk_forward_backtest
+from src.bootstrap import bootstrap_portfolio_summary
 from src.benchmark import (
     calculate_benchmark_returns,
     compare_with_benchmark,
@@ -555,6 +556,16 @@ def main() -> None:
         transaction_cost_rate=TRANSACTION_COST_RATE,
         covariance_method="sample",
     )
+
+
+    bootstrap_summary = bootstrap_portfolio_summary(
+        asset_returns,
+        weights,
+        n_bootstrap=1000,
+        seed=42,
+    )
+    print("\nBootstrap Robustness (in-sample, fixed weights)")
+    print(bootstrap_summary.round(4).to_string())
 
     print_comparison(result)
     print_diversification_analysis(
