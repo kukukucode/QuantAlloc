@@ -17,6 +17,7 @@ from src.sample_config import (
     STRATEGY_LABELS,
     TRANSACTION_COST_RATE,
 )
+from src.stress import StressResult, worst_benchmark_stress
 from src.visualization import cumulative_return_paths, drawdown_paths
 
 
@@ -87,6 +88,7 @@ class StrategyComparison:
     tail_risk: pd.DataFrame
     rolling_volatility: dict[int, pd.DataFrame]
     rolling_sharpe: dict[int, pd.DataFrame]
+    stress: StressResult
 
 
 def run_strategy_comparison(
@@ -132,12 +134,15 @@ def run_strategy_comparison(
         window: rolling_risk_metrics(aligned, window) for window in (63, 126, 252)
     }
 
+    stress = worst_benchmark_stress(aligned, window=21)
+
     return StrategyComparison(
         backtests=backtests,
         performance=compare_strategies(returns),
         cumulative_returns=cumulative_return_paths(returns),
         drawdowns=drawdown_paths(returns),
         tail_risk=tail_risk,
+        stress=stress,
         rolling_volatility={
             window: metrics[0] for window, metrics in rolling_stats.items()
         },

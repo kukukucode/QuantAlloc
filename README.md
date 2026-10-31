@@ -4,7 +4,7 @@ QuantAllocは、日本株ポートフォリオをPythonで定量分析し、TOPI
 
 松尾研究所が提供する講座で学んだ内容を実践し、理解を深める目的で作成しました。
 
-Current version: **v0.17 Rolling Risk Analysis**
+Current version: **v0.18 Stress Testing**
 
 ## 主な機能
 
@@ -24,6 +24,8 @@ Current version: **v0.17 Rolling Risk Analysis**
 - Streamlitで4戦略とTOPIXのCAGR・Volatility・Sharpe・Max Drawdown・VaR・CVaRを一括比較し、累積リターンとDrawdownを同一グラフで表示
 
 - 63・126・252営業日のRolling Volatility・Rolling Sharpeを計算し、Streamlitで4戦略とTOPIXのリスク変化を時系列比較
+
+- TOPIXの21営業日累積リターンが最も低い共通OOS期間を抽出し、4戦略とTOPIXの期間リターン・最大Drawdown・回復日数を比較
 
 ## 分析条件
 
@@ -87,6 +89,8 @@ Streamlitの「4戦略を比較」では、Equal Weight、Minimum Variance、Max
 
 Rolling Risk Analysisでは、共通OOS期間の日次リターンから63・126・252営業日の年率VolatilityとSharpeを計算します。年率換算は252営業日、リスクフリーレートは0%です。戦略には売買コスト控除後のNetリターンを使用します。観測数が足りない期間やVolatilityが実質0の期間では、計算できない指標を欠損値として扱います。
 
+Stress Testingでは、共通OOS期間のTOPIX日次リターンから、21営業日累積リターンが最も低い期間を事後的に抽出します。その同じ期間の4戦略とTOPIXについて、累積リターン、最大Drawdown、回復日数を比較します。回復日数はストレス期間終了後、期間開始前の資産価値を回復するまでの営業日数です。期間終了時点で回復済みなら0日、観測期間中に回復しなければ未回復とします。4戦略は売買コスト控除後、TOPIXは売買コスト未控除です。この分析は過去の厳しい市場局面を振り返るもので、将来の暴落を予測するものではありません。
+
 テスト:
 
 ```bash
@@ -111,7 +115,9 @@ QuantAlloc/
 │   ├── portfolio.py
 │   ├── risk.py
 │   ├── risk_parity.py
+│   ├── rolling.py
 │   ├── sample_config.py
+│   ├── stress.py
 │   └── visualization.py
 ├── tests/
 ├── app.py
