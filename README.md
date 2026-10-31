@@ -4,7 +4,7 @@ QuantAllocは、日本株ポートフォリオをPythonで定量分析し、TOPI
 
 松尾研究所が提供する講座で学んだ内容を実践し、理解を深める目的で作成しました。
 
-Current version: **v0.19 Factor Exposure Analysis**
+Current version: **v0.20 Parameter Sensitivity Analysis**
 
 ## 主な機能
 
@@ -28,6 +28,8 @@ Current version: **v0.19 Factor Exposure Analysis**
 - TOPIXの21営業日累積リターンが最も低い共通OOS期間を抽出し、4戦略とTOPIXの期間リターン・最大Drawdown・回復日数を比較
 
 - TOPIXを市場ファクターとする日次単回帰でMarket Beta・Annual Alpha・R²を推定し、Streamlitで4戦略を比較
+
+- Parameter Sensitivity Analysis: 学習期間・リバランス頻度・売買コストを1条件ずつ変更し、共通OOS期間のNet成績を比較
 
 ## 分析条件
 
@@ -95,6 +97,8 @@ Stress Testingでは、共通OOS期間のTOPIX日次リターンから、21営�
 
 Factor Exposure Analysisでは、共通OOS期間の4戦略とTOPIXの日次リターンを使用し、TOPIXを説明変数とする単一市場ファクター回帰を行います。Market Betaは市場への感応度、Annual Alphaは日次回帰切片を252営業日で算術年率化した値、R²は市場モデルによる変動の説明割合です。4戦略には売買コスト控除後のNetリターン、TOPIXには売買コスト未控除のリターンを使用します。市場リターンの分散が実質0の場合、指標は算出不可です。定数リターン系列のR²も算出不可とします。Alphaの統計的有意性は検定しておらず、因果関係や将来の超過収益を示すものではありません。
 
+Parameter Sensitivity Analysisでは、選択戦略について学習期間252・378・504営業日、リバランス頻度21・63・126・252営業日、売買コスト0・10・30bpsをそれぞれ独立に変更してWalk-Forward検証します。各比較表では共通OOS期間を使用します。評価指標はCAGR・Volatility・Sharpe・Max Drawdownとリバランスコスト率の合計です。履歴不足の設定はInsufficient historyと表示します。異なる表では評価期間が異なる場合があり、結果は将来の成績を保証するものではありません。
+
 テスト:
 
 ```bash
@@ -122,6 +126,7 @@ QuantAlloc/
 │   ├── risk_parity.py
 │   ├── rolling.py
 │   ├── sample_config.py
+│   ├── sensitivity.py
 │   ├── stress.py
 │   └── visualization.py
 ├── tests/

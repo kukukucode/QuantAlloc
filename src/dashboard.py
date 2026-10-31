@@ -18,6 +18,7 @@ from src.sample_config import (
     STRATEGY_LABELS,
     TRANSACTION_COST_RATE,
 )
+from src.sensitivity import SensitivityResult, run_parameter_sensitivity
 from src.stress import StressResult, worst_benchmark_stress
 from src.visualization import cumulative_return_paths, drawdown_paths
 
@@ -154,3 +155,12 @@ def run_strategy_comparison(
             window: metrics[1] for window, metrics in rolling_stats.items()
         },
     )
+
+
+def run_sample_sensitivity(
+    asset_prices: pd.DataFrame,
+    strategy: str = "equal_weight",
+) -> SensitivityResult:
+    """Analyze parameter sensitivity on existing asset price data."""
+    asset_returns = calculate_asset_returns(asset_prices)
+    return run_parameter_sensitivity(asset_returns, strategy)
