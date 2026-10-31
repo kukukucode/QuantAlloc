@@ -46,59 +46,101 @@ def display_analysis(result: SampleAnalysis) -> None:
     ):
         value = values[key]
         value_text = (
-            "算出不可" if pd.isna(value)
-            else f"{value:.2f}" if key == "sharpe" else f"{value:.2%}"
+            "算出不可"
+            if pd.isna(value)
+            else f"{value:.2f}"
+            if key == "sharpe"
+            else f"{value:.2%}"
         )
         column.metric(label, value_text)
 
     st.subheader(f"{strategy_label} vs TOPIX")
-    display_summary = summary.rename(columns={
-        "cagr": "CAGR", "volatility": "Volatility",
-        "sharpe": "Sharpe", "max_drawdown": "Max Drawdown",
-    })
+    display_summary = summary.rename(
+        columns={
+            "cagr": "CAGR",
+            "volatility": "Volatility",
+            "sharpe": "Sharpe",
+            "max_drawdown": "Max Drawdown",
+        }
+    )
     # Period metadata is retained on the result, not sent through Arrow's JSON metadata.
     display_summary.attrs = {}
     st.dataframe(
-        display_summary.style.format({
-            "CAGR": "{:.2%}", "Volatility": "{:.2%}",
-            "Sharpe": "{:.2f}", "Max Drawdown": "{:.2%}",
-        }, na_rep="算出不可"),
+        display_summary.style.format(
+            {
+                "CAGR": "{:.2%}",
+                "Volatility": "{:.2%}",
+                "Sharpe": "{:.2f}",
+                "Max Drawdown": "{:.2%}",
+            },
+            na_rep="算出不可",
+        ),
         width="stretch",
     )
     st.caption(
         f"{strategy_label}は売買コスト控除後のNet成績です。"
         "TOPIX（1306.T）は取得リターンをそのまま使用し、売買コストは推定しません。"
     )
+    st.subheader("Tail Risk（Historical / Daily / 95%）")
+    st.caption(
+        "共通OOS期間の日次リターンから推定した損失率です。"
+        "選択戦略は売買コスト控除後のNet、TOPIXはコスト未控除です。"
+        "数値が大きいほど下方リスクが大きいことを示します。"
+    )
+    risk_table = result.tail_risk.rename(
+        columns={"var_95": "VaR 95%", "cvar_95": "CVaR 95%"}
+    )
+    risk_table.attrs = {}
+    st.dataframe(
+        risk_table.style.format({"VaR 95%": "{:.2%}", "CVaR 95%": "{:.2%}"}),
+        width="stretch",
+    )
+
     cumulative, drawdown, allocation = st.tabs(["累積リターン", "Drawdown", "配分"])
     with cumulative:
         st.line_chart(
             result.cumulative_returns * 100.0,
-            x_label="Date", y_label="Cumulative return (%)", height=400,
+            x_label="Date",
+            y_label="Cumulative return (%)",
+            height=400,
         )
     with drawdown:
         st.line_chart(
             result.drawdowns * 100.0,
-            x_label="Date", y_label="Drawdown (%)", height=400,
+            x_label="Date",
+            y_label="Drawdown (%)",
+            height=400,
         )
     with allocation:
-        st.caption("各リバランスのtarget weightです。日々driftした保有比率ではありません。")
-        st.bar_chart(
-            (result.backtest.target_weights.iloc[-1] * 100.0).rename("Target weight (%)"),
-            x_label="Asset", y_label="Latest target weight (%)",
+        st.caption(
+            "各リバランスのtarget weightです。日々driftした保有比率ではありません。"
         )
-        st.dataframe(result.backtest.target_weights.style.format("{:.1%}"), width="stretch")
+        st.bar_chart(
+            (result.backtest.target_weights.iloc[-1] * 100.0).rename(
+                "Target weight (%)"
+            ),
+            x_label="Asset",
+            y_label="Latest target weight (%)",
+        )
+        st.dataframe(
+            result.backtest.target_weights.style.format("{:.1%}"), width="stretch"
+        )
 
 
 def main() -> None:
     st.set_page_config(page_title="QuantAlloc", page_icon="📊", layout="wide")
     st.title("QuantAlloc")
-    st.caption("v0.13 Strategy Selection")
-    st.write("既存10銘柄・固定条件で配分戦略を選び、TOPIXとWalk-Forward成績を比較します。")
+    st.caption("v0.15 Tail Risk Analysis")
+    st.write(
+        "既存10銘柄・固定条件で配分戦略を選び、TOPIXとWalk-Forward成績を比較します。"
+    )
     with st.sidebar:
         st.header("分析条件")
         strategy = st.selectbox(
-            "戦略", list(STRATEGY_LABELS),
-            format_func=STRATEGY_LABELS.__getitem__, key="selected_strategy",
+            "戦略",
+            list(STRATEGY_LABELS),
+            format_func=STRATEGY_LABELS.__getitem__,
+            key="selected_strategy",
         )
         st.caption("戦略以外の条件は固定です。")
         st.write(f"Benchmark: {BENCHMARK_TICKER}（TOPIX ETF）")

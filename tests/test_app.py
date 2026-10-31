@@ -8,8 +8,13 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from src.dashboard import run_sample_analysis
-from src.sample_config import BENCHMARK_TICKER, END_DATE, START_DATE, STRATEGY_LABELS, TICKERS
-
+from src.sample_config import (
+    BENCHMARK_TICKER,
+    END_DATE,
+    START_DATE,
+    STRATEGY_LABELS,
+    TICKERS,
+)
 
 APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
 
@@ -71,15 +76,20 @@ def test_app_displays_net_metrics_and_percentage_charts(
     label = STRATEGY_LABELS[strategy]
     expected = run_sample_analysis(*sample_market_prices, strategy)
     assert app.metric[0].value == f"{expected.performance.loc[label, 'cagr']:.2%}"
-    table = next(frame.value for frame in app.dataframe if "CAGR" in frame.value.columns)
+    table = next(
+        frame.value for frame in app.dataframe if "CAGR" in frame.value.columns
+    )
     assert table.index.to_list() == [label, "TOPIX"]
     assert any(heading.value == f"{label} vs TOPIX" for heading in app.subheader)
-    assert table.loc["TOPIX", "CAGR"] == pytest.approx(expected.performance.loc["TOPIX", "cagr"])
+    assert table.loc["TOPIX", "CAGR"] == pytest.approx(
+        expected.performance.loc["TOPIX", "cagr"]
+    )
     assert len(charts) == 2
     pd.testing.assert_frame_equal(charts[0], expected.cumulative_returns * 100.0)
     pd.testing.assert_frame_equal(charts[1], expected.drawdowns * 100.0)
     assert offline_fetch == [
-        (TICKERS, START_DATE, END_DATE), ([BENCHMARK_TICKER], START_DATE, END_DATE)
+        (TICKERS, START_DATE, END_DATE),
+        ([BENCHMARK_TICKER], START_DATE, END_DATE),
     ]
     assert any("売買コストは推定しません" in caption.value for caption in app.caption)
 
@@ -120,7 +130,9 @@ def test_app_shows_download_error_without_crashing(monkeypatch) -> None:
     assert not app.metric
 
 
-def test_app_discards_stale_result_after_failed_refresh(offline_fetch, monkeypatch) -> None:
+def test_app_discards_stale_result_after_failed_refresh(
+    offline_fetch, monkeypatch
+) -> None:
     app = AppTest.from_file(str(APP_PATH), default_timeout=30).run()
     app.button[0].click().run()
     assert len(app.metric) == 4
@@ -137,11 +149,17 @@ def test_app_discards_stale_result_after_failed_refresh(offline_fetch, monkeypat
     assert "sample_analysis" not in app.session_state
 
 
-def test_app_reports_insufficient_history(offline_fetch, sample_market_prices, monkeypatch) -> None:
+def test_app_reports_insufficient_history(
+    offline_fetch, sample_market_prices, monkeypatch
+) -> None:
     asset_prices, benchmark_prices = sample_market_prices
 
     def short_fetch(tickers, start, end):
-        return benchmark_prices if tickers == [BENCHMARK_TICKER] else asset_prices.iloc[:550]
+        return (
+            benchmark_prices
+            if tickers == [BENCHMARK_TICKER]
+            else asset_prices.iloc[:550]
+        )
 
     monkeypatch.setattr("src.data_provider.fetch_prices", short_fetch)
     app = AppTest.from_file(str(APP_PATH), default_timeout=30).run()
@@ -151,7 +169,9 @@ def test_app_reports_insufficient_history(offline_fetch, sample_market_prices, m
     assert not app.metric
 
 
-def test_app_invalidates_result_and_cache_after_date_change(offline_fetch, monkeypatch) -> None:
+def test_app_invalidates_result_and_cache_after_date_change(
+    offline_fetch, monkeypatch
+) -> None:
     app = AppTest.from_file(str(APP_PATH), default_timeout=30).run()
     app.button[0].click().run()
     assert len(app.metric) == 4
@@ -165,28 +185,34 @@ def test_app_invalidates_result_and_cache_after_date_change(offline_fetch, monke
 
 
 @pytest.mark.parametrize("changed_argument", [0, 1, 2, 3])
-def test_price_cache_key_includes_every_request_argument(monkeypatch, changed_argument) -> None:
+def test_price_cache_key_includes_every_request_argument(
+    monkeypatch, changed_argument
+) -> None:
     import app as application
 
     calls = []
 
     def fetch(tickers, start, end):
         calls.append((tuple(tickers), start, end))
-        return pd.DataFrame(100.0, index=pd.bdate_range(start, periods=2), columns=tickers)
+        return pd.DataFrame(
+            100.0, index=pd.bdate_range(start, periods=2), columns=tickers
+        )
 
     monkeypatch.setattr(application, "fetch_prices", fetch)
     request = [("A", "B"), "TOPIX", "2021-01-01", "2026-01-01"]
     application.load_sample_prices(*request)
     application.load_sample_prices(*request)
     assert len(calls) == 2
-    request[changed_argument] = [
-        ("A", "C"), "OTHER", "2022-01-01", "2025-01-01"
-    ][changed_argument]
+    request[changed_argument] = [("A", "C"), "OTHER", "2022-01-01", "2025-01-01"][
+        changed_argument
+    ]
     application.load_sample_prices(*request)
     assert len(calls) == 4
 
 
-def test_app_displays_undefined_sharpe_as_unavailable(monkeypatch, sample_market_prices) -> None:
+def test_app_displays_undefined_sharpe_as_unavailable(
+    monkeypatch, sample_market_prices
+) -> None:
     dates = sample_market_prices[0].index
 
     def flat_fetch(tickers, start, end):
@@ -200,7 +226,9 @@ def test_app_displays_undefined_sharpe_as_unavailable(monkeypatch, sample_market
     assert sharpe.value == "算出不可"
 
 
-def test_strategy_change_clears_old_result_without_refetching(offline_fetch, monkeypatch) -> None:
+def test_strategy_change_clears_old_result_without_refetching(
+    offline_fetch, monkeypatch
+) -> None:
     calls = []
 
     def recording_analysis(asset_prices, benchmark_prices, strategy):
@@ -223,7 +251,9 @@ def test_strategy_change_clears_old_result_without_refetching(offline_fetch, mon
     assert app.session_state["sample_analysis"].strategy == "minimum_variance"
 
 
-def test_failed_strategy_is_reported_without_fallback(offline_fetch, monkeypatch) -> None:
+def test_failed_strategy_is_reported_without_fallback(
+    offline_fetch, monkeypatch
+) -> None:
     app = AppTest.from_file(str(APP_PATH), default_timeout=30).run()
     app.button[0].click().run()
     assert len(app.metric) == 4
@@ -241,3 +271,30 @@ def test_failed_strategy_is_reported_without_fallback(offline_fetch, monkeypatch
     assert attempts == ["minimum_variance"]
     assert not app.metric
     assert "sample_analysis" not in app.session_state
+
+
+def test_app_displays_tail_risk_table(offline_fetch, sample_market_prices) -> None:
+    app = AppTest.from_file(str(APP_PATH), default_timeout=30).run()
+
+    app.button[0].click().run()
+    assert not app.exception
+
+    tables = [
+        item.value
+        for item in app.dataframe
+        if {"VaR 95%", "CVaR 95%"}.issubset(item.value.columns)
+    ]
+    assert len(tables) == 1
+
+    displayed = tables[0]
+    expected = run_sample_analysis(*sample_market_prices).tail_risk
+
+    assert displayed.index.tolist() == ["Equal Weight", "TOPIX"]
+
+    for name in expected.index:
+        assert displayed.loc[name, "VaR 95%"] == pytest.approx(
+            expected.loc[name, "var_95"]
+        )
+        assert displayed.loc[name, "CVaR 95%"] == pytest.approx(
+            expected.loc[name, "cvar_95"]
+        )

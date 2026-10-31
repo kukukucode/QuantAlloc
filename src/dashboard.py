@@ -6,8 +6,9 @@ import pandas as pd
 
 from src.backtest import BacktestResult, walk_forward_backtest
 from src.benchmark import calculate_benchmark_returns
-from src.evaluation import compare_strategies
+from src.evaluation import _align_strategy_returns, compare_strategies
 from src.portfolio import calculate_asset_returns
+from src.risk import conditional_value_at_risk, value_at_risk
 from src.sample_config import (
     BENCHMARK_TICKER,
     ESTIMATION_WINDOW,
@@ -26,6 +27,7 @@ class SampleAnalysis:
     performance: pd.DataFrame
     cumulative_returns: pd.DataFrame
     drawdowns: pd.DataFrame
+    tail_risk: pd.DataFrame
     strategy: str = "equal_weight"
 
 
@@ -46,11 +48,28 @@ def run_sample_analysis(
         holding_period=HOLDING_PERIOD,
         transaction_cost_rate=TRANSACTION_COST_RATE,
     )
-    returns = {STRATEGY_LABELS[strategy]: backtest.net_returns, "TOPIX": benchmark_returns}
+    returns = {
+        STRATEGY_LABELS[strategy]: backtest.net_returns,
+        "TOPIX": benchmark_returns,
+    }
+    aligned_returns = _align_strategy_returns(returns)
+    tail_risk = pd.DataFrame.from_dict(
+        {
+            name: {
+                "var_95": value_at_risk(aligned_returns[name]),
+                "cvar_95": conditional_value_at_risk(aligned_returns[name]),
+            }
+            for name in aligned_returns.columns
+        },
+        orient="index",
+    )
+    tail_risk.index.name = "Strategy"
+
     return SampleAnalysis(
         backtest=backtest,
         performance=compare_strategies(returns),
         cumulative_returns=cumulative_return_paths(returns),
         drawdowns=drawdown_paths(returns),
+        tail_risk=tail_risk,
         strategy=strategy,
     )
