@@ -529,3 +529,56 @@ def test_app_cost_change_invalidates_comparison(
     assert not app.error
     assert "sample_comparison" in app.session_state
     assert len(offline_fetch) == 2
+
+
+def test_app_export_uses_saved_prices(offline_fetch, monkeypatch) -> None:
+    import json
+    from io import BytesIO
+    from zipfile import ZipFile
+
+    archives = []
+
+    def capture_download(label, **kwargs):
+        assert label == "結果と設定をZIPで保存"
+        archives.append(kwargs["data"])
+        return False
+
+    monkeypatch.setattr(st, "download_button", capture_download)
+
+    app = AppTest.from_file(str(APP_PATH), default_timeout=60).run()
+
+    assert not archives
+    assert not offline_fetch
+
+    app.button[0].click().run()
+
+    assert not app.exception
+    assert not app.error
+    assert len(archives) == 1
+    assert len(offline_fetch) == 2
+
+    with ZipFile(BytesIO(archives[-1])) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+
+    assert manifest["analysis_type"] == "single_strategy"
+    assert manifest["settings"]["estimation_window"] == 504
+
+    selector = next(box for box in app.selectbox if box.label == "学習期間（営業日）")
+    selector.select(252).run()
+
+    assert not app.exception
+    assert len(archives) == 1
+    assert len(offline_fetch) == 2
+    assert not app.metric
+
+    app.button[0].click().run()
+
+    assert not app.exception
+    assert not app.error
+    assert len(archives) == 2
+    assert len(offline_fetch) == 2
+
+    with ZipFile(BytesIO(archives[-1])) as archive:
+        updated = json.loads(archive.read("manifest.json"))
+
+    assert updated["settings"]["estimation_window"] == 252

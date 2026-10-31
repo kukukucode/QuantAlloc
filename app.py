@@ -12,6 +12,7 @@ from src.dashboard import (
 )
 from src.dashboard_settings import DashboardSettings
 from src.data_provider import fetch_prices
+from src.export import create_export_archive
 from src.sample_config import (
     BENCHMARK_TICKER,
     END_DATE,
@@ -386,10 +387,37 @@ def display_sensitivity(result) -> None:
         )
 
 
+def display_export(
+    result,
+    settings: DashboardSettings,
+    price_request: tuple,
+) -> None:
+    """Export a saved result and the input prices used to produce it."""
+    asset_prices, benchmark_prices = st.session_state["sample_export_inputs"]
+
+    archive = create_export_archive(
+        result,
+        settings,
+        asset_prices,
+        benchmark_prices,
+        start_date=price_request[2],
+        end_date=price_request[3],
+        benchmark_ticker=price_request[1],
+    )
+
+    st.download_button(
+        "結果と設定をZIPで保存",
+        data=archive,
+        file_name="quantalloc_v022_analysis.zip",
+        mime="application/zip",
+        key="download_analysis_export",
+    )
+
+
 def main() -> None:
     st.set_page_config(page_title="QuantAlloc", page_icon="📊", layout="wide")
     st.title("QuantAlloc")
-    st.caption("v0.21 Interactive Dashboard Parameters")
+    st.caption("v0.22 Export & Reproducibility")
     st.write(
         "既存10銘柄・選択した条件で配分戦略を選び、TOPIXとWalk-Forward成績を比較します。"
     )
@@ -451,11 +479,18 @@ def main() -> None:
         st.session_state.pop("sample_comparison", None)
     if st.session_state.get("sample_sensitivity_request") != analysis_request:
         st.session_state.pop("sample_sensitivity", None)
+    if not any(
+        key in st.session_state
+        for key in ("sample_analysis", "sample_comparison", "sample_sensitivity")
+    ):
+        st.session_state.pop("sample_export_inputs", None)
+
     if st.button("分析を実行", type="primary"):
         # Never present a previous successful result after a failed new run.
         st.session_state.pop("sample_analysis", None)
         st.session_state.pop("sample_comparison", None)
         st.session_state.pop("sample_sensitivity", None)
+        st.session_state.pop("sample_export_inputs", None)
         try:
             with st.spinner("価格データを取得し、分析しています…"):
                 asset_prices, benchmark_prices = load_sample_prices(*price_request)
@@ -473,6 +508,10 @@ def main() -> None:
 
                 st.session_state["sample_analysis"] = analysis
                 st.session_state["sample_analysis_request"] = analysis_request
+                st.session_state["sample_export_inputs"] = (
+                    asset_prices.copy(),
+                    benchmark_prices.copy(),
+                )
         except (ValueError, TypeError, KeyError, RuntimeError, OSError) as exc:
             st.error(f"分析できませんでした: {exc}")
 
@@ -480,6 +519,7 @@ def main() -> None:
         st.session_state.pop("sample_analysis", None)
         st.session_state.pop("sample_comparison", None)
         st.session_state.pop("sample_sensitivity", None)
+        st.session_state.pop("sample_export_inputs", None)
         try:
             with st.spinner("4戦略をバックテストしています…"):
                 asset_prices, benchmark_prices = load_sample_prices(*price_request)
@@ -487,6 +527,10 @@ def main() -> None:
                     asset_prices, benchmark_prices, settings=settings
                 )
                 st.session_state["sample_comparison_request"] = comparison_request
+                st.session_state["sample_export_inputs"] = (
+                    asset_prices.copy(),
+                    benchmark_prices.copy(),
+                )
         except (ValueError, TypeError, KeyError, RuntimeError, OSError) as exc:
             st.error(f"比較できませんでした: {exc}")
 
@@ -494,22 +538,29 @@ def main() -> None:
         st.session_state.pop("sample_analysis", None)
         st.session_state.pop("sample_comparison", None)
         st.session_state.pop("sample_sensitivity", None)
+        st.session_state.pop("sample_export_inputs", None)
         try:
             with st.spinner("パラメータ感応度を分析しています…"):
-                asset_prices, _ = load_sample_prices(*price_request)
+                asset_prices, benchmark_prices = load_sample_prices(*price_request)
                 st.session_state["sample_sensitivity"] = run_sample_sensitivity(
                     asset_prices, strategy, settings=settings
                 )
                 st.session_state["sample_sensitivity_request"] = analysis_request
+                st.session_state["sample_export_inputs"] = (
+                    asset_prices.copy(),
+                    benchmark_prices.copy(),
+                )
         except (ValueError, TypeError, KeyError, RuntimeError, OSError) as exc:
             st.error(f"感応度を分析できませんでした: {exc}")
 
     if "sample_sensitivity" in st.session_state:
         display_sensitivity(st.session_state["sample_sensitivity"])
+        display_export(st.session_state["sample_sensitivity"], settings, price_request)
         return
 
     if "sample_comparison" in st.session_state:
         display_comparison(st.session_state["sample_comparison"])
+        display_export(st.session_state["sample_comparison"], settings, price_request)
         return
 
     if "sample_analysis" not in st.session_state:
@@ -517,6 +568,7 @@ def main() -> None:
         return
 
     display_analysis(st.session_state["sample_analysis"])
+    display_export(st.session_state["sample_analysis"], settings, price_request)
 
 
 if __name__ == "__main__":
