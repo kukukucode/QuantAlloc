@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from src.backtest import BacktestResult, walk_forward_backtest
+from src.dashboard_settings import DashboardSettings
 from src.evaluation import _align_strategy_returns, performance_summary
 from src.sample_config import (
     ESTIMATION_WINDOW,
@@ -50,6 +51,9 @@ def run_parameter_sensitivity(
     asset_returns: pd.DataFrame,
     strategy: str,
     *,
+    estimation_window: int = ESTIMATION_WINDOW,
+    holding_period: int = HOLDING_PERIOD,
+    transaction_cost_rate: float = TRANSACTION_COST_RATE,
     estimation_windows: tuple[int, ...] = (252, 378, 504),
     holding_periods: tuple[int, ...] = (21, 63, 126, 252),
     transaction_cost_rates: tuple[float, ...] = (0.0, 0.001, 0.003),
@@ -75,10 +79,15 @@ def run_parameter_sensitivity(
     for parameter, options in sweeps.items():
         _validate_options(parameter, options)
 
+    config = DashboardSettings(
+        estimation_window=estimation_window,
+        holding_period=holding_period,
+        transaction_cost_rate=transaction_cost_rate,
+    )
     baseline = {
-        "estimation_window": ESTIMATION_WINDOW,
-        "holding_period": HOLDING_PERIOD,
-        "transaction_cost_rate": TRANSACTION_COST_RATE,
+        "estimation_window": config.estimation_window,
+        "holding_period": config.holding_period,
+        "transaction_cost_rate": config.transaction_cost_rate,
     }
 
     cache: dict[tuple[int, int, float], BacktestResult] = {}

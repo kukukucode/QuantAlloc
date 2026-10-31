@@ -6,6 +6,7 @@ import pandas as pd
 
 from src.backtest import BacktestResult, walk_forward_backtest
 from src.benchmark import calculate_benchmark_returns
+from src.dashboard_settings import DashboardSettings
 from src.evaluation import _align_strategy_returns, compare_strategies
 from src.factor import market_factor_exposure
 from src.portfolio import calculate_asset_returns
@@ -13,14 +14,21 @@ from src.risk import conditional_value_at_risk, value_at_risk
 from src.rolling import rolling_risk_metrics
 from src.sample_config import (
     BENCHMARK_TICKER,
-    ESTIMATION_WINDOW,
-    HOLDING_PERIOD,
     STRATEGY_LABELS,
-    TRANSACTION_COST_RATE,
 )
 from src.sensitivity import SensitivityResult, run_parameter_sensitivity
 from src.stress import StressResult, worst_benchmark_stress
 from src.visualization import cumulative_return_paths, drawdown_paths
+
+
+def _resolve_settings(
+    settings: DashboardSettings | None,
+) -> DashboardSettings:
+    if settings is None:
+        return DashboardSettings()
+    if not isinstance(settings, DashboardSettings):
+        raise TypeError("settings must be DashboardSettings")
+    return settings
 
 
 @dataclass(frozen=True)
@@ -39,18 +47,21 @@ def run_sample_analysis(
     asset_prices: pd.DataFrame,
     benchmark_prices: pd.DataFrame,
     strategy: str = "equal_weight",
+    *,
+    settings: DashboardSettings | None = None,
 ) -> SampleAnalysis:
     """Reuse the existing engine and metrics on one common OOS period."""
     if strategy not in STRATEGY_LABELS:
         raise ValueError(f"unsupported dashboard strategy: {strategy}")
+    config = _resolve_settings(settings)
     asset_returns = calculate_asset_returns(asset_prices)
     benchmark_returns = calculate_benchmark_returns(benchmark_prices, BENCHMARK_TICKER)
     backtest = walk_forward_backtest(
         asset_returns,
         strategy,
-        estimation_window=ESTIMATION_WINDOW,
-        holding_period=HOLDING_PERIOD,
-        transaction_cost_rate=TRANSACTION_COST_RATE,
+        estimation_window=config.estimation_window,
+        holding_period=config.holding_period,
+        transaction_cost_rate=config.transaction_cost_rate,
     )
     returns = {
         STRATEGY_LABELS[strategy]: backtest.net_returns,
@@ -97,8 +108,11 @@ class StrategyComparison:
 def run_strategy_comparison(
     asset_prices: pd.DataFrame,
     benchmark_prices: pd.DataFrame,
+    *,
+    settings: DashboardSettings | None = None,
 ) -> StrategyComparison:
     """Compare all dashboard strategies and TOPIX on identical dates."""
+    config = _resolve_settings(settings)
     asset_returns = calculate_asset_returns(asset_prices)
     benchmark_returns = calculate_benchmark_returns(benchmark_prices, BENCHMARK_TICKER)
 
@@ -106,9 +120,9 @@ def run_strategy_comparison(
         strategy: walk_forward_backtest(
             asset_returns,
             strategy,
-            estimation_window=ESTIMATION_WINDOW,
-            holding_period=HOLDING_PERIOD,
-            transaction_cost_rate=TRANSACTION_COST_RATE,
+            estimation_window=config.estimation_window,
+            holding_period=config.holding_period,
+            transaction_cost_rate=config.transaction_cost_rate,
         )
         for strategy in STRATEGY_LABELS
     }
@@ -160,7 +174,16 @@ def run_strategy_comparison(
 def run_sample_sensitivity(
     asset_prices: pd.DataFrame,
     strategy: str = "equal_weight",
+    *,
+    settings: DashboardSettings | None = None,
 ) -> SensitivityResult:
-    """Analyze parameter sensitivity on existing asset price data."""
+    """Analyze parameter sensitivity around selected baseline settings."""
+    config = _resolve_settings(settings)
     asset_returns = calculate_asset_returns(asset_prices)
-    return run_parameter_sensitivity(asset_returns, strategy)
+    return run_parameter_sensitivity(
+        asset_returns,
+        strategy,
+        estimation_window=config.estimation_window,
+        holding_period=config.holding_period,
+        transaction_cost_rate=config.transaction_cost_rate,
+    )
