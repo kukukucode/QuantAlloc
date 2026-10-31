@@ -7,6 +7,7 @@ import pandas as pd
 from src.backtest import BacktestResult, walk_forward_backtest
 from src.benchmark import calculate_benchmark_returns
 from src.evaluation import _align_strategy_returns, compare_strategies
+from src.factor import market_factor_exposure
 from src.portfolio import calculate_asset_returns
 from src.risk import conditional_value_at_risk, value_at_risk
 from src.rolling import rolling_risk_metrics
@@ -89,6 +90,7 @@ class StrategyComparison:
     rolling_volatility: dict[int, pd.DataFrame]
     rolling_sharpe: dict[int, pd.DataFrame]
     stress: StressResult
+    factor_exposure: pd.DataFrame
 
 
 def run_strategy_comparison(
@@ -135,6 +137,7 @@ def run_strategy_comparison(
     }
 
     stress = worst_benchmark_stress(aligned, window=21)
+    factor_exposure = market_factor_exposure(aligned)
 
     return StrategyComparison(
         backtests=backtests,
@@ -143,6 +146,7 @@ def run_strategy_comparison(
         drawdowns=drawdown_paths(returns),
         tail_risk=tail_risk,
         stress=stress,
+        factor_exposure=factor_exposure,
         rolling_volatility={
             window: metrics[0] for window, metrics in rolling_stats.items()
         },

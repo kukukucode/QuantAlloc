@@ -396,3 +396,37 @@ def test_app_displays_stress_comparison(offline_fetch) -> None:
     )
 
     assert len(offline_fetch) == 2
+
+
+def test_app_displays_factor_exposure(offline_fetch) -> None:
+    app = AppTest.from_file(str(APP_PATH), default_timeout=60).run()
+
+    app.button[1].click().run()
+
+    assert not app.exception
+    assert not app.error
+
+    result = app.session_state["sample_comparison"]
+
+    table = next(
+        item.value for item in app.dataframe if "Market Beta" in item.value.columns
+    )
+
+    expected_labels = list(STRATEGY_LABELS.values()) + ["TOPIX"]
+
+    assert table.index.tolist() == expected_labels
+
+    for name in expected_labels:
+        assert table.loc[name, "Market Beta"] == pytest.approx(
+            result.factor_exposure.loc[name, "beta"]
+        )
+
+        assert table.loc[name, "Annual Alpha"] == pytest.approx(
+            result.factor_exposure.loc[name, "alpha_annual"]
+        )
+
+        assert table.loc[name, "R²"] == pytest.approx(
+            result.factor_exposure.loc[name, "r_squared"]
+        )
+
+    assert len(offline_fetch) == 2
