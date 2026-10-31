@@ -417,7 +417,7 @@ def display_export(
 def main() -> None:
     st.set_page_config(page_title="QuantAlloc", page_icon="📊", layout="wide")
     st.title("QuantAlloc")
-    st.caption("v0.22 Export & Reproducibility")
+    st.caption("v0.23 Archive Verification & Replay")
     st.write(
         "既存10銘柄・選択した条件で配分戦略を選び、TOPIXとWalk-Forward成績を比較します。"
     )
