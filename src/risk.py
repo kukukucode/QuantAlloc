@@ -5,6 +5,7 @@ import math
 import numpy as np
 import pandas as pd
 
+from src.metrics import _validated_returns
 from src.portfolio import validate_weights
 
 
@@ -107,3 +108,47 @@ def risk_contribution(
         },
         index=aligned_weights.index,
     )
+
+
+def _validate_confidence_level(confidence_level: float) -> None:
+    """Validate the confidence level for tail-risk metrics."""
+    if (
+        isinstance(confidence_level, bool)
+        or not isinstance(confidence_level, (int, float))
+        or not math.isfinite(confidence_level)
+        or not 0.0 < confidence_level < 1.0
+    ):
+        raise ValueError("confidence_level must be between 0 and 1")
+
+
+def value_at_risk(
+    returns: pd.Series,
+    confidence_level: float = 0.95,
+) -> float:
+    """Calculate historical VaR as a nonnegative daily loss."""
+    _validate_confidence_level(confidence_level)
+    validated = _validated_returns(returns)
+
+    quantile = validated.quantile(1.0 - confidence_level)
+    return max(0.0, -float(quantile))
+
+
+def conditional_value_at_risk(
+    returns: pd.Series,
+    confidence_level: float = 0.95,
+) -> float:
+    """Calculate historical expected shortfall using fractional tail weights."""
+    _validate_confidence_level(confidence_level)
+    validated = _validated_returns(returns)
+
+    losses = np.sort(-validated.to_numpy())[::-1]
+    tail_count = len(losses) * (1.0 - confidence_level)
+
+    whole_count = int(tail_count)
+    fraction = tail_count - whole_count
+
+    tail_loss = float(losses[:whole_count].sum())
+    if fraction > 0.0:
+        tail_loss += fraction * float(losses[whole_count])
+
+    return max(0.0, tail_loss / tail_count)

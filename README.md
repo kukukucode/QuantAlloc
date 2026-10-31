@@ -4,7 +4,7 @@ QuantAllocは、日本株ポートフォリオをPythonで定量分析し、TOPI
 
 松尾研究所が提供する講座で学んだ内容を実践し、理解を深める目的で作成しました。
 
-Current version: **v0.14 Strategy Selection**
+Current version: **v0.15 Tail Risk Analysis**
 
 ## 主な機能
 
@@ -18,6 +18,8 @@ Current version: **v0.14 Strategy Selection**
 - Streamlitで4戦略を選択し、TOPIXとの指標・累積リターン・Drawdown・target weightを表示
 
 - i.i.d. Bootstrapによる固定配分ポートフォリオのCAGR・Volatility・Sharpe・Max Drawdownの頑健性分析
+
+- Historical VaR 95%・CVaR 95%による日次下方リスク分析。Streamlitで選択戦略とTOPIXを共通OOS期間で比較
 
 ## 分析条件
 
@@ -39,6 +41,8 @@ BLのサンプルは**仮定の例**です。market weightsは下記の10銘柄�
 BL入力は固定設定または学習期間だけを受け取る関数で渡せます。market weightsとviewにはリバランス時点で利用可能な情報を使用してください。初回配分のコストは0、Sum Costは各リバランスのコスト率の合計です。TOPIXの売買量・コストは推定せず「-」で表示します。
 
 Bootstrapは日次リターンの行を復元抽出し、固定配分で1,000回評価します。2.5%点・中央値・97.5%点を表示します。これはin-sample分析であり、将来の成績予測ではありません。
+
+VaR・CVaRは共通OOS期間の日次リターンから推定します。選択戦略は売買コスト控除後のNet、TOPIXはコスト未控除です。CVaRは最悪5%の部分における平均損失を表し、観測数に応じて端数の重みを使用します。いずれも過去データに基づく推定で、将来の損失上限ではありません。
 
 ## サンプルポートフォリオ
 
