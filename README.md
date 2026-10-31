@@ -4,7 +4,7 @@ QuantAllocは、日本株ポートフォリオをPythonで定量分析し、TOPI
 
 松尾研究所が提供する講座で学んだ内容を実践し、理解を深める目的で作成しました。
 
-Current version: **v0.16 Strategy Comparison**
+Current version: **v0.17 Rolling Risk Analysis**
 
 ## 主な機能
 
@@ -22,6 +22,8 @@ Current version: **v0.16 Strategy Comparison**
 - Historical VaR 95%・CVaR 95%による日次下方リスク分析。Streamlitで選択戦略とTOPIXを共通OOS期間で比較
 
 - Streamlitで4戦略とTOPIXのCAGR・Volatility・Sharpe・Max Drawdown・VaR・CVaRを一括比較し、累積リターンとDrawdownを同一グラフで表示
+
+- 63・126・252営業日のRolling Volatility・Rolling Sharpeを計算し、Streamlitで4戦略とTOPIXのリスク変化を時系列比較
 
 ## 分析条件
 
@@ -82,6 +84,8 @@ Equal Weight／Minimum Variance／Maximum Sharpe／Risk Parityから戦略を選
 価格は取得条件ごとに1時間キャッシュし、戦略切り替えでは再取得しません。選択を変えると前の結果を消し、再実行を待ちます。最適化失敗時に別戦略へ切り替えることはありません。
 
 Streamlitの「4戦略を比較」では、Equal Weight、Minimum Variance、Maximum Sharpe、Risk Parity、TOPIXを同一OOS期間で比較します。4戦略は売買コスト控除後のNetリターン、TOPIXは売買コスト未控除のリターンを使用します。従来の1戦略選択・分析機能も利用できます。
+
+Rolling Risk Analysisでは、共通OOS期間の日次リターンから63・126・252営業日の年率VolatilityとSharpeを計算します。年率換算は252営業日、リスクフリーレートは0%です。戦略には売買コスト控除後のNetリターンを使用します。観測数が足りない期間やVolatilityが実質0の期間では、計算できない指標を欠損値として扱います。
 
 テスト:
 

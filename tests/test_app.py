@@ -336,3 +336,40 @@ def test_app_compares_all_strategies_and_reuses_cache(
     assert "sample_comparison" not in app.session_state
     assert len(app.metric) == 4
     assert len(offline_fetch) == 2
+
+
+def test_app_displays_rolling_risk_comparison(offline_fetch, monkeypatch) -> None:
+    charts = []
+    original_line_chart = st.line_chart
+
+    def recording_chart(data, **kwargs):
+        charts.append(data.copy())
+        return original_line_chart(data, **kwargs)
+
+    monkeypatch.setattr(st, "line_chart", recording_chart)
+
+    app = AppTest.from_file(str(APP_PATH), default_timeout=60).run()
+
+    app.button[1].click().run()
+
+    assert not app.exception
+    assert not app.error
+    assert len(app.selectbox) == 2
+    rolling_selector = next(
+        box for box in app.selectbox if box.label == "ローリング期間"
+    )
+    assert rolling_selector.value == 63
+
+    result = app.session_state["sample_comparison"]
+
+    assert len(charts) == 4
+    pd.testing.assert_frame_equal(
+        charts[2],
+        result.rolling_volatility[63].dropna(how="all") * 100.0,
+    )
+    pd.testing.assert_frame_equal(
+        charts[3],
+        result.rolling_sharpe[63].dropna(how="all"),
+    )
+
+    assert len(offline_fetch) == 2
