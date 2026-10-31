@@ -305,7 +305,7 @@ def test_app_compares_all_strategies_and_reuses_cache(
 ) -> None:
     app = AppTest.from_file(str(APP_PATH), default_timeout=60).run()
 
-    assert len(app.button) == 2
+    assert len(app.button) == 3
     assert app.button[1].label == "4戦略を比較"
 
     app.button[1].click().run()
@@ -429,4 +429,39 @@ def test_app_displays_factor_exposure(offline_fetch) -> None:
             result.factor_exposure.loc[name, "r_squared"]
         )
 
+    assert len(offline_fetch) == 2
+
+
+def test_app_runs_sensitivity_only_on_request(
+    offline_fetch,
+) -> None:
+    app = AppTest.from_file(str(APP_PATH), default_timeout=90).run()
+
+    assert len(app.button) == 3
+    assert app.button[2].label == "感応度を分析"
+    assert offline_fetch == []
+
+    app.button[2].click().run()
+
+    assert not app.exception
+    assert not app.error
+    assert not app.metric
+
+    result = app.session_state["sample_sensitivity"]
+
+    assert result.strategy == "equal_weight"
+    assert len(offline_fetch) == 2
+
+    tables = [
+        item.value for item in app.dataframe if "Total Cost" in item.value.columns
+    ]
+
+    assert len(tables) == 3
+    assert "Insufficient history" in tables[1]["Status"].values
+
+    app.button[0].click().run()
+
+    assert not app.exception
+    assert "sample_sensitivity" not in app.session_state
+    assert len(app.metric) == 4
     assert len(offline_fetch) == 2
