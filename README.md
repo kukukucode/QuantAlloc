@@ -4,7 +4,7 @@ QuantAllocは、日本株ポートフォリオをPythonで定量分析し、TOPI
 
 松尾研究所が提供する講座で学んだ内容を実践し、理解を深める目的で作成しました。
 
-Current version: **v0.18 Stress Testing**
+Current version: **v0.19 Factor Exposure Analysis**
 
 ## 主な機能
 
@@ -26,6 +26,8 @@ Current version: **v0.18 Stress Testing**
 - 63・126・252営業日のRolling Volatility・Rolling Sharpeを計算し、Streamlitで4戦略とTOPIXのリスク変化を時系列比較
 
 - TOPIXの21営業日累積リターンが最も低い共通OOS期間を抽出し、4戦略とTOPIXの期間リターン・最大Drawdown・回復日数を比較
+
+- TOPIXを市場ファクターとする日次単回帰でMarket Beta・Annual Alpha・R²を推定し、Streamlitで4戦略を比較
 
 ## 分析条件
 
@@ -91,6 +93,8 @@ Rolling Risk Analysisでは、共通OOS期間の日次リターンから63・126
 
 Stress Testingでは、共通OOS期間のTOPIX日次リターンから、21営業日累積リターンが最も低い期間を事後的に抽出します。その同じ期間の4戦略とTOPIXについて、累積リターン、最大Drawdown、回復日数を比較します。回復日数はストレス期間終了後、期間開始前の資産価値を回復するまでの営業日数です。期間終了時点で回復済みなら0日、観測期間中に回復しなければ未回復とします。4戦略は売買コスト控除後、TOPIXは売買コスト未控除です。この分析は過去の厳しい市場局面を振り返るもので、将来の暴落を予測するものではありません。
 
+Factor Exposure Analysisでは、共通OOS期間の4戦略とTOPIXの日次リターンを使用し、TOPIXを説明変数とする単一市場ファクター回帰を行います。Market Betaは市場への感応度、Annual Alphaは日次回帰切片を252営業日で算術年率化した値、R²は市場モデルによる変動の説明割合です。4戦略には売買コスト控除後のNetリターン、TOPIXには売買コスト未控除のリターンを使用します。市場リターンの分散が実質0の場合、指標は算出不可です。定数リターン系列のR²も算出不可とします。Alphaの統計的有意性は検定しておらず、因果関係や将来の超過収益を示すものではありません。
+
 テスト:
 
 ```bash
@@ -110,6 +114,7 @@ QuantAlloc/
 │   ├── dashboard.py
 │   ├── diversification.py
 │   ├── evaluation.py
+│   ├── factor.py
 │   ├── metrics.py
 │   ├── optimization.py
 │   ├── portfolio.py

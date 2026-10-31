@@ -284,11 +284,53 @@ def display_comparison(result: StrategyComparison) -> None:
         height=400,
     )
 
+    st.subheader("Factor Exposure（TOPIX Market Model）")
+    st.caption(
+        "共通OOS期間の日次リターンを使った単回帰分析です。"
+        "BetaはTOPIXへの感応度、Annual Alphaは日次切片の"
+        "252営業日換算、R²は市場モデルの説明力です。"
+    )
+    st.caption(
+        "4戦略は売買コスト控除後のNet、TOPIXはコスト未控除。"
+        "Alphaは将来の超過収益や運用スキルを保証しません。"
+        "市場変動がない場合などは算出不可です。"
+    )
+
+    factors = result.factor_exposure.rename(
+        columns={
+            "beta": "Market Beta",
+            "alpha_annual": "Annual Alpha",
+            "r_squared": "R²",
+        }
+    )
+    factors.attrs = {}
+
+    st.dataframe(
+        factors.style.format(
+            {
+                "Market Beta": "{:.3f}",
+                "Annual Alpha": "{:.2%}",
+                "R²": "{:.3f}",
+            },
+            na_rep="算出不可",
+        ),
+        width="stretch",
+    )
+
+    betas = result.factor_exposure["beta"].drop(index="TOPIX").dropna()
+
+    if not betas.empty:
+        st.bar_chart(
+            betas.rename("Market Beta"),
+            x_label="Strategy",
+            y_label="Market Beta",
+        )
+
 
 def main() -> None:
     st.set_page_config(page_title="QuantAlloc", page_icon="📊", layout="wide")
     st.title("QuantAlloc")
-    st.caption("v0.18 Stress Testing")
+    st.caption("v0.19 Factor Exposure Analysis")
     st.write(
         "既存10銘柄・固定条件で配分戦略を選び、TOPIXとWalk-Forward成績を比較します。"
     )
