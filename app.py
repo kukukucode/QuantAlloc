@@ -244,11 +244,51 @@ def display_comparison(result: StrategyComparison) -> None:
                     height=400,
                 )
 
+    st.subheader("Stress Testing（Worst TOPIX 21-day Window）")
+    st.caption(
+        f"TOPIXが最も低い21営業日リターンを記録した期間: "
+        f"{result.stress.start.date()} → {result.stress.end.date()}"
+    )
+    st.caption(
+        "共通OOS期間から事後的に抽出した局面です。"
+        "回復日数はストレス期間終了後、期間開始前の資産価値を"
+        "再び上回るまでの営業日数です。"
+        "未回復は観測期間内に回復が確認できないことを示します。"
+    )
+
+    stress_table = result.stress.summary.rename(
+        columns={
+            "window_return": "Stress Return",
+            "max_drawdown": "Stress Max Drawdown",
+            "recovery_days": "Recovery Days",
+        }
+    )
+    stress_table.attrs = {}
+
+    st.dataframe(
+        stress_table.style.format(
+            {
+                "Stress Return": "{:.2%}",
+                "Stress Max Drawdown": "{:.2%}",
+                "Recovery Days": "{:.0f}",
+            },
+            na_rep="未回復",
+        ),
+        width="stretch",
+    )
+
+    st.line_chart(
+        result.stress.cumulative_returns * 100.0,
+        x_label="Date",
+        y_label="Stress cumulative return (%)",
+        height=400,
+    )
+
 
 def main() -> None:
     st.set_page_config(page_title="QuantAlloc", page_icon="📊", layout="wide")
     st.title("QuantAlloc")
-    st.caption("v0.17 Rolling Risk Analysis")
+    st.caption("v0.18 Stress Testing")
     st.write(
         "既存10銘柄・固定条件で配分戦略を選び、TOPIXとWalk-Forward成績を比較します。"
     )

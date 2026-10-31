@@ -362,7 +362,7 @@ def test_app_displays_rolling_risk_comparison(offline_fetch, monkeypatch) -> Non
 
     result = app.session_state["sample_comparison"]
 
-    assert len(charts) == 4
+    assert len(charts) == 5
     pd.testing.assert_frame_equal(
         charts[2],
         result.rolling_volatility[63].dropna(how="all") * 100.0,
@@ -370,6 +370,29 @@ def test_app_displays_rolling_risk_comparison(offline_fetch, monkeypatch) -> Non
     pd.testing.assert_frame_equal(
         charts[3],
         result.rolling_sharpe[63].dropna(how="all"),
+    )
+
+    assert len(offline_fetch) == 2
+
+
+def test_app_displays_stress_comparison(offline_fetch) -> None:
+    app = AppTest.from_file(str(APP_PATH), default_timeout=60).run()
+
+    app.button[1].click().run()
+
+    assert not app.exception
+    assert not app.error
+
+    result = app.session_state["sample_comparison"]
+
+    table = next(
+        item.value for item in app.dataframe if "Stress Return" in item.value.columns
+    )
+
+    assert table.index.tolist() == (list(STRATEGY_LABELS.values()) + ["TOPIX"])
+
+    assert table.loc["TOPIX", "Stress Return"] == pytest.approx(
+        result.stress.summary.loc["TOPIX", "window_return"]
     )
 
     assert len(offline_fetch) == 2
