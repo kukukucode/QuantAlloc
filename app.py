@@ -10,6 +10,7 @@ from src.dashboard import (
     run_sample_sensitivity,
     run_strategy_comparison,
 )
+from src.dashboard_settings import DashboardSettings
 from src.data_provider import fetch_prices
 from src.sample_config import (
     BENCHMARK_TICKER,
@@ -332,7 +333,7 @@ def display_sensitivity(result) -> None:
     """Show three independent parameter sweeps."""
     st.subheader(f"Parameter Sensitivity — {STRATEGY_LABELS[result.strategy]}")
     st.caption(
-        "選択戦略のみを再バックテストします。"
+        "選択戦略を、サイドバーで指定した条件を基準に再バックテストします。"
         "学習期間・保有期間・売買コストを1条件ずつ変更します。"
         "各表の成績はその表内の共通OOS期間で比較します。"
     )
@@ -388,9 +389,9 @@ def display_sensitivity(result) -> None:
 def main() -> None:
     st.set_page_config(page_title="QuantAlloc", page_icon="📊", layout="wide")
     st.title("QuantAlloc")
-    st.caption("v0.20 Parameter Sensitivity Analysis")
+    st.caption("v0.21 Interactive Dashboard Parameters")
     st.write(
-        "既存10銘柄・固定条件で配分戦略を選び、TOPIXとWalk-Forward成績を比較します。"
+        "既存10銘柄・選択した条件で配分戦略を選び、TOPIXとWalk-Forward成績を比較します。"
     )
     with st.sidebar:
         st.header("分析条件")
@@ -400,11 +401,40 @@ def main() -> None:
             format_func=STRATEGY_LABELS.__getitem__,
             key="selected_strategy",
         )
-        st.caption("戦略以外の条件は固定です。")
+        st.caption("設定を変更すると、前回の分析結果は非表示になります。")
+
+        training_options = (252, 378, 504)
+        holding_options = (21, 63, 126, 252)
+        cost_options = (0, 10, 30)
+
+        training = st.selectbox(
+            "学習期間（営業日）",
+            training_options,
+            index=training_options.index(ESTIMATION_WINDOW),
+            key="selected_training",
+        )
+
+        holding = st.selectbox(
+            "リバランス頻度（営業日）",
+            holding_options,
+            index=holding_options.index(HOLDING_PERIOD),
+            key="selected_holding",
+        )
+
+        cost_bps = st.selectbox(
+            "売買コスト（bps）",
+            cost_options,
+            index=cost_options.index(int(TRANSACTION_COST_RATE * 10000)),
+            key="selected_cost",
+        )
+
+        settings = DashboardSettings(
+            estimation_window=training,
+            holding_period=holding,
+            transaction_cost_rate=cost_bps / 10000,
+        )
+
         st.write(f"Benchmark: {BENCHMARK_TICKER}（TOPIX ETF）")
-        st.write(f"Training: {ESTIMATION_WINDOW} trading days")
-        st.write(f"Holding: {HOLDING_PERIOD} trading days")
-        st.write(f"Cost: {TRANSACTION_COST_RATE * 10000:g} bps per turnover")
         st.write("Covariance: Sample（最適化戦略）")
         st.write("Risk-free rate: 0% / No short / No leverage")
         st.caption(f"取得期間: {START_DATE} ～ {END_DATE}（終了日を含まない）")
@@ -413,10 +443,11 @@ def main() -> None:
 
     st.caption("価格データは1時間キャッシュします。初回配分の売買コストは0です。")
     price_request = (tuple(TICKERS), BENCHMARK_TICKER, START_DATE, END_DATE)
-    analysis_request = (price_request, strategy)
+    analysis_request = (price_request, strategy, settings)
+    comparison_request = (price_request, settings)
     if st.session_state.get("sample_analysis_request") != analysis_request:
         st.session_state.pop("sample_analysis", None)
-    if st.session_state.get("sample_comparison_request") != price_request:
+    if st.session_state.get("sample_comparison_request") != comparison_request:
         st.session_state.pop("sample_comparison", None)
     if st.session_state.get("sample_sensitivity_request") != analysis_request:
         st.session_state.pop("sample_sensitivity", None)
@@ -428,9 +459,19 @@ def main() -> None:
         try:
             with st.spinner("価格データを取得し、分析しています…"):
                 asset_prices, benchmark_prices = load_sample_prices(*price_request)
-                st.session_state["sample_analysis"] = run_sample_analysis(
-                    asset_prices, benchmark_prices, strategy
-                )
+                if settings == DashboardSettings():
+                    analysis = run_sample_analysis(
+                        asset_prices, benchmark_prices, strategy
+                    )
+                else:
+                    analysis = run_sample_analysis(
+                        asset_prices,
+                        benchmark_prices,
+                        strategy,
+                        settings=settings,
+                    )
+
+                st.session_state["sample_analysis"] = analysis
                 st.session_state["sample_analysis_request"] = analysis_request
         except (ValueError, TypeError, KeyError, RuntimeError, OSError) as exc:
             st.error(f"分析できませんでした: {exc}")
@@ -443,9 +484,9 @@ def main() -> None:
             with st.spinner("4戦略をバックテストしています…"):
                 asset_prices, benchmark_prices = load_sample_prices(*price_request)
                 st.session_state["sample_comparison"] = run_strategy_comparison(
-                    asset_prices, benchmark_prices
+                    asset_prices, benchmark_prices, settings=settings
                 )
-                st.session_state["sample_comparison_request"] = price_request
+                st.session_state["sample_comparison_request"] = comparison_request
         except (ValueError, TypeError, KeyError, RuntimeError, OSError) as exc:
             st.error(f"比較できませんでした: {exc}")
 
@@ -457,7 +498,7 @@ def main() -> None:
             with st.spinner("パラメータ感応度を分析しています…"):
                 asset_prices, _ = load_sample_prices(*price_request)
                 st.session_state["sample_sensitivity"] = run_sample_sensitivity(
-                    asset_prices, strategy
+                    asset_prices, strategy, settings=settings
                 )
                 st.session_state["sample_sensitivity_request"] = analysis_request
         except (ValueError, TypeError, KeyError, RuntimeError, OSError) as exc:

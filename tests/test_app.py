@@ -354,7 +354,7 @@ def test_app_displays_rolling_risk_comparison(offline_fetch, monkeypatch) -> Non
 
     assert not app.exception
     assert not app.error
-    assert len(app.selectbox) == 2
+    assert len(app.selectbox) == 5
     rolling_selector = next(
         box for box in app.selectbox if box.label == "ローリング期間"
     )
@@ -464,4 +464,68 @@ def test_app_runs_sensitivity_only_on_request(
     assert not app.exception
     assert "sample_sensitivity" not in app.session_state
     assert len(app.metric) == 4
+    assert len(offline_fetch) == 2
+
+
+def test_app_settings_change_invalidates_results_without_refetch(
+    offline_fetch,
+) -> None:
+    app = AppTest.from_file(str(APP_PATH), default_timeout=60).run()
+
+    training = next(box for box in app.selectbox if box.label == "学習期間（営業日）")
+
+    assert training.value == 504
+
+    app.button[0].click().run()
+
+    assert not app.exception
+    assert len(app.metric) == 4
+    assert len(offline_fetch) == 2
+
+    training = next(box for box in app.selectbox if box.label == "学習期間（営業日）")
+    training.select(252).run()
+
+    assert not app.exception
+    assert not app.metric
+    assert "sample_analysis" not in app.session_state
+    assert len(offline_fetch) == 2
+
+    app.button[0].click().run()
+
+    assert not app.exception
+    assert len(app.metric) == 4
+    assert len(offline_fetch) == 2
+
+    result = app.session_state["sample_analysis"]
+
+    assert len(result.backtest.periods) >= 1
+    assert (
+        result.backtest.periods.iloc[0]["train_end"]
+        < (result.backtest.periods.iloc[0]["test_start"])
+    )
+
+
+def test_app_cost_change_invalidates_comparison(
+    offline_fetch,
+) -> None:
+    app = AppTest.from_file(str(APP_PATH), default_timeout=90).run()
+
+    app.button[1].click().run()
+
+    assert not app.exception
+    assert "sample_comparison" in app.session_state
+    assert len(offline_fetch) == 2
+
+    cost = next(box for box in app.selectbox if box.label == "売買コスト（bps）")
+    cost.select(30).run()
+
+    assert not app.exception
+    assert "sample_comparison" not in app.session_state
+    assert len(offline_fetch) == 2
+
+    app.button[1].click().run()
+
+    assert not app.exception
+    assert not app.error
+    assert "sample_comparison" in app.session_state
     assert len(offline_fetch) == 2
