@@ -298,3 +298,41 @@ def test_app_displays_tail_risk_table(offline_fetch, sample_market_prices) -> No
         assert displayed.loc[name, "CVaR 95%"] == pytest.approx(
             expected.loc[name, "cvar_95"]
         )
+
+
+def test_app_compares_all_strategies_and_reuses_cache(
+    offline_fetch,
+) -> None:
+    app = AppTest.from_file(str(APP_PATH), default_timeout=60).run()
+
+    assert len(app.button) == 2
+    assert app.button[1].label == "4戦略を比較"
+
+    app.button[1].click().run()
+    assert not app.exception
+    assert not app.error
+    assert not app.metric
+
+    result = app.session_state["sample_comparison"]
+    expected_labels = list(STRATEGY_LABELS.values()) + ["TOPIX"]
+
+    assert result.performance.index.tolist() == expected_labels
+    assert result.cumulative_returns.columns.tolist() == expected_labels
+    assert result.drawdowns.columns.tolist() == expected_labels
+
+    performance_table = next(
+        item.value for item in app.dataframe if "CAGR" in item.value.columns
+    )
+    risk_table = next(
+        item.value for item in app.dataframe if "CVaR 95%" in item.value.columns
+    )
+
+    assert performance_table.index.tolist() == expected_labels
+    assert risk_table.index.tolist() == expected_labels
+    assert len(offline_fetch) == 2
+
+    app.button[0].click().run()
+    assert not app.exception
+    assert "sample_comparison" not in app.session_state
+    assert len(app.metric) == 4
+    assert len(offline_fetch) == 2
