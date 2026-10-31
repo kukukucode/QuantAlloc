@@ -4,7 +4,7 @@ QuantAllocは、日本株ポートフォリオをPythonで定量分析し、TOPI
 
 松尾研究所が提供する講座で学んだ内容を実践し、理解を深める目的で作成しました。
 
-Current version: **v0.22 Export & Reproducibility**
+Current version: **v0.23 Archive Verification & Replay**
 
 ## 主な機能
 
@@ -34,6 +34,8 @@ Current version: **v0.22 Export & Reproducibility**
 - Streamlitで学習期間・リバランス頻度・売買コストを変更し、分析結果の再計算とキャッシュ管理に反映
 
 - 1戦略分析・4戦略比較・感応度分析の結果、使用した価格データ、分析設定、SHA-256チェックサムをZIPで一括出力
+
+- 保存済みZIPのSHA-256・ファイル構成を検証し、価格データと設定から分析をオフラインで再実行して結果を照合
 
 ## 分析条件
 
@@ -107,6 +109,35 @@ Interactive Dashboard Parametersでは、学習期間252・378・504営業日、
 
 Export & Reproducibilityでは、分析結果を表示した後に結果と設定をZIPで保存できます。ZIPには分析内容に応じた結果CSV、使用した銘柄・TOPIX ETFの価格データCSV、manifest.jsonが含まれます。manifest.jsonは戦略・学習期間・リバランス頻度・売買コスト・価格取得条件・共通OOS評価期間・各CSVのSHA-256ハッシュを記録します。保存時にバックテストを再実行することはありません。CSV内のリターンやリスク指標は原則として小数形式です。価格データは分析実行時のスナップショットです。SHA-256はファイルの整合性確認に利用できますが、データの正確性や取得元の真正性を保証しません。将来の完全な再現にはPython・依存ライブラリのバージョン、ソースコード、実行環境の固定も必要です。
 
+## 保存済みZIPの検証
+
+v0.23では、v0.22形式で出力したZIPをローカル環境で検証できます。
+
+チェックサムとファイル構成のみを検証する場合:
+
+```bash
+python -m src.export_verify quantalloc_v022_analysis.zip --integrity-only
+```
+
+保存した入力データを使って分析を再実行し、結果CSVも照合する場合:
+
+```bash
+python -m src.export_verify quantalloc_v022_analysis.zip
+```
+
+ZIPファイルのパスは保存先に合わせて指定してください。
+成功時は `VERIFICATION PASSED`、失敗時は `VERIFICATION FAILED` と表示されます。
+失敗時の終了コードは1です。
+
+検証対象は1戦略分析・4戦略比較・パラメータ感応度分析です。
+再実行には保存済みの価格データを使用し、Yahoo Financeへの再アクセスは行いません。
+数値の照合には浮動小数点演算による微小な差を許容します。
+
+SHA-256の一致はファイルの整合性確認に役立ちますが、
+第三者による改ざんがないことを証明する電子署名ではありません。
+再実行結果の一致も、異なるPython・依存ライブラリ・
+ソースコード環境での完全な再現を保証するものではありません。
+
 テスト:
 
 ```bash
@@ -128,6 +159,7 @@ QuantAlloc/
 │   ├── diversification.py
 │   ├── evaluation.py
 │   ├── export.py
+│   ├── export_verify.py
 │   ├── factor.py
 │   ├── metrics.py
 │   ├── optimization.py
