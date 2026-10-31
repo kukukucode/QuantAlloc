@@ -3,7 +3,12 @@
 import pandas as pd
 import streamlit as st
 
-from src.dashboard import SampleAnalysis, run_sample_analysis
+from src.dashboard import (
+    SampleAnalysis,
+    StrategyComparison,
+    run_sample_analysis,
+    run_strategy_comparison,
+)
 from src.data_provider import fetch_prices
 from src.sample_config import (
     BENCHMARK_TICKER,
@@ -127,10 +132,83 @@ def display_analysis(result: SampleAnalysis) -> None:
         )
 
 
+def display_comparison(result: StrategyComparison) -> None:
+    """Display five return series without rerunning the backtests."""
+    summary = result.performance
+    start = summary.attrs["start_date"].date()
+    end = summary.attrs["end_date"].date()
+
+    st.subheader("4戦略とTOPIXの一括比較")
+    st.caption(
+        f"共通OOS期間: {start} → {end} / {summary.attrs['observations']} observations"
+    )
+    st.caption("4戦略は売買コスト控除後のNet成績です。TOPIXは売買コスト未控除です。")
+
+    performance = summary.rename(
+        columns={
+            "cagr": "CAGR",
+            "volatility": "Volatility",
+            "sharpe": "Sharpe",
+            "max_drawdown": "Max Drawdown",
+        }
+    )
+    performance.attrs = {}
+
+    st.dataframe(
+        performance.style.format(
+            {
+                "CAGR": "{:.2%}",
+                "Volatility": "{:.2%}",
+                "Sharpe": "{:.2f}",
+                "Max Drawdown": "{:.2%}",
+            },
+            na_rep="算出不可",
+        ),
+        width="stretch",
+    )
+
+    st.subheader("Tail Risk（Historical / Daily / 95%）")
+    risk = result.tail_risk.rename(
+        columns={
+            "var_95": "VaR 95%",
+            "cvar_95": "CVaR 95%",
+        }
+    )
+    risk.attrs = {}
+
+    st.dataframe(
+        risk.style.format(
+            {
+                "VaR 95%": "{:.2%}",
+                "CVaR 95%": "{:.2%}",
+            }
+        ),
+        width="stretch",
+    )
+
+    cumulative_tab, drawdown_tab = st.tabs(["累積リターン", "Drawdown"])
+
+    with cumulative_tab:
+        st.line_chart(
+            result.cumulative_returns * 100.0,
+            x_label="Date",
+            y_label="Cumulative return (%)",
+            height=400,
+        )
+
+    with drawdown_tab:
+        st.line_chart(
+            result.drawdowns * 100.0,
+            x_label="Date",
+            y_label="Drawdown (%)",
+            height=400,
+        )
+
+
 def main() -> None:
     st.set_page_config(page_title="QuantAlloc", page_icon="📊", layout="wide")
     st.title("QuantAlloc")
-    st.caption("v0.15 Tail Risk Analysis")
+    st.caption("v0.16 Strategy Comparison")
     st.write(
         "既存10銘柄・固定条件で配分戦略を選び、TOPIXとWalk-Forward成績を比較します。"
     )
@@ -158,9 +236,12 @@ def main() -> None:
     analysis_request = (price_request, strategy)
     if st.session_state.get("sample_analysis_request") != analysis_request:
         st.session_state.pop("sample_analysis", None)
+    if st.session_state.get("sample_comparison_request") != price_request:
+        st.session_state.pop("sample_comparison", None)
     if st.button("分析を実行", type="primary"):
         # Never present a previous successful result after a failed new run.
         st.session_state.pop("sample_analysis", None)
+        st.session_state.pop("sample_comparison", None)
         try:
             with st.spinner("価格データを取得し、分析しています…"):
                 asset_prices, benchmark_prices = load_sample_prices(*price_request)
@@ -171,9 +252,27 @@ def main() -> None:
         except (ValueError, TypeError, KeyError, RuntimeError, OSError) as exc:
             st.error(f"分析できませんでした: {exc}")
 
-    if "sample_analysis" not in st.session_state:
-        st.info("「分析を実行」を押すと、指標とグラフを表示します。")
+    if st.button("4戦略を比較"):
+        st.session_state.pop("sample_analysis", None)
+        st.session_state.pop("sample_comparison", None)
+        try:
+            with st.spinner("4戦略をバックテストしています…"):
+                asset_prices, benchmark_prices = load_sample_prices(*price_request)
+                st.session_state["sample_comparison"] = run_strategy_comparison(
+                    asset_prices, benchmark_prices
+                )
+                st.session_state["sample_comparison_request"] = price_request
+        except (ValueError, TypeError, KeyError, RuntimeError, OSError) as exc:
+            st.error(f"比較できませんでした: {exc}")
+
+    if "sample_comparison" in st.session_state:
+        display_comparison(st.session_state["sample_comparison"])
         return
+
+    if "sample_analysis" not in st.session_state:
+        st.info("分析を実行、または4戦略を比較してください。")
+        return
+
     display_analysis(st.session_state["sample_analysis"])
 
 
