@@ -4,7 +4,7 @@ QuantAllocは、日本株ポートフォリオをPythonで定量分析し、TOPI
 
 松尾研究所が提供する講座で学んだ内容を実践し、理解を深める目的で作成しました。
 
-Current version: **v0.20 Parameter Sensitivity Analysis**
+Current version: **v0.21 Interactive Dashboard Parameters**
 
 ## 主な機能
 
@@ -30,6 +30,8 @@ Current version: **v0.20 Parameter Sensitivity Analysis**
 - TOPIXを市場ファクターとする日次単回帰でMarket Beta・Annual Alpha・R²を推定し、Streamlitで4戦略を比較
 
 - Parameter Sensitivity Analysis: 学習期間・リバランス頻度・売買コストを1条件ずつ変更し、共通OOS期間のNet成績を比較
+
+- Streamlitで学習期間・リバランス頻度・売買コストを変更し、分析結果の再計算とキャッシュ管理に反映
 
 ## 分析条件
 
@@ -86,7 +88,7 @@ Streamlit画面:
 python -m streamlit run app.py
 ```
 
-Equal Weight／Minimum Variance／Maximum Sharpe／Risk Parityから戦略を選び、「分析を実行」で取得・計算します。銘柄・期間・学習／保有日数・売買コストは固定で、最適化にはSample共分散を使います。BLは画面では選択できません。
+Equal Weight／Minimum Variance／Maximum Sharpe／Risk Parityから戦略を選び、「分析を実行」で取得・計算します。銘柄・期間は固定で、学習／保有日数・売買コストは画面で選択でき、最適化にはSample共分散を使います。BLは画面では選択できません。
 価格は取得条件ごとに1時間キャッシュし、戦略切り替えでは再取得しません。選択を変えると前の結果を消し、再実行を待ちます。最適化失敗時に別戦略へ切り替えることはありません。
 
 Streamlitの「4戦略を比較」では、Equal Weight、Minimum Variance、Maximum Sharpe、Risk Parity、TOPIXを同一OOS期間で比較します。4戦略は売買コスト控除後のNetリターン、TOPIXは売買コスト未控除のリターンを使用します。従来の1戦略選択・分析機能も利用できます。
@@ -98,6 +100,8 @@ Stress Testingでは、共通OOS期間のTOPIX日次リターンから、21営�
 Factor Exposure Analysisでは、共通OOS期間の4戦略とTOPIXの日次リターンを使用し、TOPIXを説明変数とする単一市場ファクター回帰を行います。Market Betaは市場への感応度、Annual Alphaは日次回帰切片を252営業日で算術年率化した値、R²は市場モデルによる変動の説明割合です。4戦略には売買コスト控除後のNetリターン、TOPIXには売買コスト未控除のリターンを使用します。市場リターンの分散が実質0の場合、指標は算出不可です。定数リターン系列のR²も算出不可とします。Alphaの統計的有意性は検定しておらず、因果関係や将来の超過収益を示すものではありません。
 
 Parameter Sensitivity Analysisでは、選択戦略について学習期間252・378・504営業日、リバランス頻度21・63・126・252営業日、売買コスト0・10・30bpsをそれぞれ独立に変更してWalk-Forward検証します。各比較表では共通OOS期間を使用します。評価指標はCAGR・Volatility・Sharpe・Max Drawdownとリバランスコスト率の合計です。履歴不足の設定はInsufficient historyと表示します。異なる表では評価期間が異なる場合があり、結果は将来の成績を保証するものではありません。
+
+Interactive Dashboard Parametersでは、学習期間252・378・504営業日、リバランス頻度21・63・126・252営業日、売買コスト0・10・30bpsをサイドバーで選択できます。初期値は504営業日・63営業日・10bpsです。選択条件は1戦略分析、4戦略比較、感応度分析に反映されます。設定を変更すると過去の分析結果は破棄されますが、取得条件が同じ価格データはキャッシュから再利用します。履歴不足の条件ではバックテストを実行できません。
 
 テスト:
 
@@ -116,6 +120,7 @@ QuantAlloc/
 │   ├── covariance.py
 │   ├── data_provider.py
 │   ├── dashboard.py
+│   ├── dashboard_settings.py
 │   ├── diversification.py
 │   ├── evaluation.py
 │   ├── factor.py
