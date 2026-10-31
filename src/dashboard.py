@@ -9,6 +9,7 @@ from src.benchmark import calculate_benchmark_returns
 from src.evaluation import _align_strategy_returns, compare_strategies
 from src.portfolio import calculate_asset_returns
 from src.risk import conditional_value_at_risk, value_at_risk
+from src.rolling import rolling_risk_metrics
 from src.sample_config import (
     BENCHMARK_TICKER,
     ESTIMATION_WINDOW,
@@ -84,6 +85,8 @@ class StrategyComparison:
     cumulative_returns: pd.DataFrame
     drawdowns: pd.DataFrame
     tail_risk: pd.DataFrame
+    rolling_volatility: dict[int, pd.DataFrame]
+    rolling_sharpe: dict[int, pd.DataFrame]
 
 
 def run_strategy_comparison(
@@ -125,10 +128,20 @@ def run_strategy_comparison(
     )
     tail_risk.index.name = "Strategy"
 
+    rolling_stats = {
+        window: rolling_risk_metrics(aligned, window) for window in (63, 126, 252)
+    }
+
     return StrategyComparison(
         backtests=backtests,
         performance=compare_strategies(returns),
         cumulative_returns=cumulative_return_paths(returns),
         drawdowns=drawdown_paths(returns),
         tail_risk=tail_risk,
+        rolling_volatility={
+            window: metrics[0] for window, metrics in rolling_stats.items()
+        },
+        rolling_sharpe={
+            window: metrics[1] for window, metrics in rolling_stats.items()
+        },
     )

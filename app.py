@@ -204,11 +204,51 @@ def display_comparison(result: StrategyComparison) -> None:
             height=400,
         )
 
+    st.subheader("Rolling Risk Analysis")
+    st.caption(
+        "共通OOS期間から計算した年率VolatilityとSharpeです。"
+        "リスクフリーレートは0%です。"
+    )
+
+    window = st.selectbox(
+        "ローリング期間",
+        (63, 126, 252),
+        format_func=lambda days: f"{days}営業日",
+        key="rolling_window",
+    )
+
+    volatility = result.rolling_volatility[window].dropna(how="all")
+    sharpe = result.rolling_sharpe[window].dropna(how="all")
+
+    if volatility.empty:
+        st.info("この期間では観測数が不足しています。")
+    else:
+        volatility_tab, sharpe_tab = st.tabs(["Rolling Volatility", "Rolling Sharpe"])
+
+        with volatility_tab:
+            st.line_chart(
+                volatility * 100.0,
+                x_label="Date",
+                y_label="Annualized volatility (%)",
+                height=400,
+            )
+
+        with sharpe_tab:
+            if sharpe.empty:
+                st.info("Sharpeを算出できる期間がありません。")
+            else:
+                st.line_chart(
+                    sharpe,
+                    x_label="Date",
+                    y_label="Rolling Sharpe",
+                    height=400,
+                )
+
 
 def main() -> None:
     st.set_page_config(page_title="QuantAlloc", page_icon="📊", layout="wide")
     st.title("QuantAlloc")
-    st.caption("v0.16 Strategy Comparison")
+    st.caption("v0.17 Rolling Risk Analysis")
     st.write(
         "既存10銘柄・固定条件で配分戦略を選び、TOPIXとWalk-Forward成績を比較します。"
     )
