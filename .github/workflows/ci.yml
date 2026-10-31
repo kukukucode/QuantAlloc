@@ -47,8 +47,8 @@ jobs:
           python -m pip install ruff
           python -m ruff check src/bootstrap.py tests/test_bootstrap.py
           python -m ruff format --check src/bootstrap.py tests/test_bootstrap.py
-          python -m ruff check src/risk.py src/rolling.py src/stress.py src/factor.py src/dashboard.py app.py tests/test_tail_risk.py tests/test_tail_risk_dashboard.py tests/test_strategy_comparison.py tests/test_rolling.py tests/test_rolling_dashboard.py tests/test_stress.py tests/test_stress_dashboard.py tests/test_factor.py tests/test_factor_dashboard.py tests/test_app.py
-          python -m ruff format --check src/risk.py src/rolling.py src/stress.py src/factor.py src/dashboard.py app.py tests/test_tail_risk.py tests/test_tail_risk_dashboard.py tests/test_strategy_comparison.py tests/test_rolling.py tests/test_rolling_dashboard.py tests/test_stress.py tests/test_stress_dashboard.py tests/test_factor.py tests/test_factor_dashboard.py tests/test_app.py
+          python -m ruff check src/risk.py src/rolling.py src/stress.py src/factor.py src/sensitivity.py src/dashboard.py app.py tests/test_tail_risk.py tests/test_tail_risk_dashboard.py tests/test_strategy_comparison.py tests/test_rolling.py tests/test_rolling_dashboard.py tests/test_stress.py tests/test_stress_dashboard.py tests/test_factor.py tests/test_factor_dashboard.py tests/test_sensitivity.py tests/test_sensitivity_dashboard.py tests/test_app.py
+          python -m ruff format --check src/risk.py src/rolling.py src/stress.py src/factor.py src/sensitivity.py src/dashboard.py app.py tests/test_tail_risk.py tests/test_tail_risk_dashboard.py tests/test_strategy_comparison.py tests/test_rolling.py tests/test_rolling_dashboard.py tests/test_stress.py tests/test_stress_dashboard.py tests/test_factor.py tests/test_factor_dashboard.py tests/test_sensitivity.py tests/test_sensitivity_dashboard.py tests/test_app.py
 
       - name: Run test suite
         run: python -m pytest -q
