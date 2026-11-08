@@ -58,7 +58,7 @@ QUANTALLOC_ENGINE=python python -m pytest -q
 # Rust拡張を必須にする。未インストールなら明示的に失敗する
 QUANTALLOC_ENGINE=rust python -m pytest -q tests/test_fast_backend.py tests/test_backtest.py
 
-# autoが標準。4,096要素以上の保有期間計算でRustを試し、未導入ならPythonに戻す
+# autoが標準。Rust拡張が利用できればRustを使い、未導入ならPythonに戻す
 QUANTALLOC_ENGINE=auto python -m benchmarks.holding_kernel
 ```
 
