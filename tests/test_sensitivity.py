@@ -3,10 +3,10 @@
 import pandas as pd
 import pytest
 
+import src.sensitivity as sensitivity_module
 from src.backtest import walk_forward_backtest
 from src.evaluation import _align_strategy_returns, performance_summary
 from src.portfolio import calculate_asset_returns
-import src.sensitivity as sensitivity_module
 from src.sensitivity import _reprice_backtest, run_parameter_sensitivity
 
 
