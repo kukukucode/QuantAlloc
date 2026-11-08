@@ -19,9 +19,13 @@ def _python_holding(
     holding_returns: pd.DataFrame,
 ) -> tuple[pd.Series, pd.Series]:
     """Original pandas reference, retained for compatibility and replay."""
-    asset_values = (1.0 + holding_returns).cumprod().mul(
-        target_weights,
-        axis="columns",
+    asset_values = (
+        (1.0 + holding_returns)
+        .cumprod()
+        .mul(
+            target_weights,
+            axis="columns",
+        )
     )
     portfolio_values = asset_values.sum(axis=1)
     if (portfolio_values <= 0.0).any():
@@ -46,9 +50,7 @@ def simulate_holding_period(
         raise ValueError("QUANTALLOC_ENGINE must be auto, python, or rust")
 
     size = holding_returns.shape[0] * holding_returns.shape[1]
-    if mode == "python" or (
-        mode == "auto" and size < _AUTO_RUST_MIN_ELEMENTS
-    ):
+    if mode == "python" or (mode == "auto" and size < _AUTO_RUST_MIN_ELEMENTS):
         return _python_holding(target_weights, holding_returns)
 
     try:
