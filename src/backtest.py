@@ -7,6 +7,7 @@ import math
 import numpy as np
 import pandas as pd
 
+from src.fast_backend import simulate_holding_period
 from src.black_litterman import implied_equilibrium_returns
 from src.covariance import VALID_COVARIANCE_METHODS, estimate_covariance
 from src.optimization import (
@@ -205,21 +206,7 @@ def _holding_period_returns(
     holding_returns: pd.DataFrame,
 ) -> tuple[pd.Series, pd.Series]:
     """Simulate buy-and-hold returns and ending drifted weights."""
-    asset_values = (1.0 + holding_returns).cumprod().mul(
-        target_weights,
-        axis="columns",
-    )
-    portfolio_values = asset_values.sum(axis=1)
-    if (portfolio_values <= 0.0).any():
-        raise ValueError("portfolio value must remain positive")
-
-    gross_returns = portfolio_values.pct_change(fill_method=None)
-    gross_returns.iloc[0] = portfolio_values.iloc[0] - 1.0
-    gross_returns.name = "gross_return"
-
-    ending_weights = asset_values.iloc[-1] / portfolio_values.iloc[-1]
-    ending_weights.name = "pre_rebalance_weight"
-    return gross_returns, ending_weights
+    return simulate_holding_period(target_weights, holding_returns)
 
 
 def walk_forward_backtest(
