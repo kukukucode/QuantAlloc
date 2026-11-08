@@ -1,6 +1,6 @@
 """One-factor-at-a-time walk-forward parameter sensitivity."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import pandas as pd
@@ -47,6 +47,40 @@ def _validate_options(parameter: str, options: tuple) -> None:
             raise ValueError(f"invalid {parameter}")
 
 
+def _reprice_backtest(
+    result: BacktestResult,
+    transaction_cost_rate: float,
+) -> BacktestResult:
+    """Apply a new cost to fixed gross returns and rebalance turnover.
+
+    The current backtester does not use transaction costs to select weights,
+    and holding-period weight drift is based on gross asset returns.
+    Repricing is not valid for cost-aware optimizers or cash-drag models.
+    """
+    transaction_costs = result.turnover * transaction_cost_rate
+    transaction_costs.name = result.transaction_costs.name
+    unaffordable = transaction_costs >= 1.0
+    if unaffordable.any():
+        rebalance = transaction_costs.index[unaffordable][0]
+        raise ValueError(
+            "transaction costs must be less than portfolio value "
+            f"at rebalance {rebalance}"
+        )
+
+    net_returns = result.gross_returns.copy()
+    rebalance_dates = transaction_costs.index
+    gross_first_days = net_returns.loc[rebalance_dates].to_numpy()
+    net_returns.loc[rebalance_dates] = (
+        (1.0 + gross_first_days) * (1.0 - transaction_costs.to_numpy()) - 1.0
+    )
+    net_returns.name = result.net_returns.name
+    return replace(
+        result,
+        net_returns=net_returns,
+        transaction_costs=transaction_costs,
+    )
+
+
 def run_parameter_sensitivity(
     asset_returns: pd.DataFrame,
     strategy: str,
@@ -90,6 +124,9 @@ def run_parameter_sensitivity(
         "transaction_cost_rate": config.transaction_cost_rate,
     }
 
+    # Costs do not affect weights or turnover in the current engine.
+    # Cache the cost-free optimization by (training window, holding period).
+    gross_cache: dict[tuple[int, int], BacktestResult] = {}
     cache: dict[tuple[int, int, float], BacktestResult] = {}
     tables = {}
 
@@ -112,13 +149,16 @@ def run_parameter_sensitivity(
             key = (training, holding, cost)
 
             if key not in cache:
-                cache[key] = walk_forward_backtest(
-                    asset_returns,
-                    strategy,
-                    estimation_window=training,
-                    holding_period=holding,
-                    transaction_cost_rate=cost,
-                )
+                gross_key = (training, holding)
+                if gross_key not in gross_cache:
+                    gross_cache[gross_key] = walk_forward_backtest(
+                        asset_returns,
+                        strategy,
+                        estimation_window=training,
+                        holding_period=holding,
+                        transaction_cost_rate=0.0,
+                    )
+                cache[key] = _reprice_backtest(gross_cache[gross_key], cost)
 
             scenarios[value] = cache[key]
 
