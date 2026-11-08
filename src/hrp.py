@@ -35,7 +35,9 @@ def hierarchical_risk_parity_weights(covariance: pd.DataFrame) -> pd.Series:
     if (variances <= 0.0).any():
         raise ValueError("covariance must contain positive asset variances")
     if count == 1:
-        return pd.Series([1.0], index=validated.columns, name="hierarchical_risk_parity")
+        return pd.Series(
+            [1.0], index=validated.columns, name="hierarchical_risk_parity"
+        )
 
     volatility = np.sqrt(variances)
     correlation = matrix / np.outer(volatility, volatility)
