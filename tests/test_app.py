@@ -583,3 +583,20 @@ def test_app_export_uses_saved_prices(offline_fetch, monkeypatch) -> None:
         updated = json.loads(archive.read("manifest.json"))
 
     assert updated["settings"]["estimation_window"] == 252
+
+
+def test_app_hrp_parallel_sensitivity(offline_fetch) -> None:
+    app = AppTest.from_file(str(APP_PATH), default_timeout=120).run()
+    app.selectbox[0].select("hierarchical_risk_parity").run()
+    workers = next(
+        box for box in app.selectbox if box.label == "感応度分析のプロセス数"
+    )
+    workers.select(2).run()
+    app.button[2].click().run()
+
+    assert not app.exception
+    assert not app.error
+    assert app.session_state["sample_sensitivity"].strategy == (
+        "hierarchical_risk_parity"
+    )
+    assert len(offline_fetch) == 2
