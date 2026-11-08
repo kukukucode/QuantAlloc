@@ -70,9 +70,9 @@ def _reprice_backtest(
     net_returns = result.gross_returns.copy()
     rebalance_dates = transaction_costs.index
     gross_first_days = net_returns.loc[rebalance_dates].to_numpy()
-    net_returns.loc[rebalance_dates] = (
-        (1.0 + gross_first_days) * (1.0 - transaction_costs.to_numpy()) - 1.0
-    )
+    net_returns.loc[rebalance_dates] = (1.0 + gross_first_days) * (
+        1.0 - transaction_costs.to_numpy()
+    ) - 1.0
     net_returns.name = result.net_returns.name
     return replace(
         result,
