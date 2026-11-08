@@ -9,6 +9,7 @@ from streamlit.testing.v1 import AppTest
 
 from src.dashboard import run_sample_analysis
 from src.sample_config import (
+    ANALYSIS_STRATEGY_LABELS,
     BENCHMARK_TICKER,
     END_DATE,
     START_DATE,
@@ -51,7 +52,7 @@ def test_app_waits_for_explicit_run(offline_fetch) -> None:
     assert not app.metric
     assert offline_fetch == []
     assert app.info
-    assert app.selectbox[0].options == list(STRATEGY_LABELS.values())
+    assert app.selectbox[0].options == list(ANALYSIS_STRATEGY_LABELS.values())
 
 
 @pytest.mark.parametrize("strategy", list(STRATEGY_LABELS))
