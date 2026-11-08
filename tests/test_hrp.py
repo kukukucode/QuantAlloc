@@ -33,9 +33,7 @@ def test_hrp_identical_independent_assets_equal_weight() -> None:
 def test_hrp_weights_are_aligned_long_only_and_fully_invested() -> None:
     assets = ["Toyota", "Sony", "MUFG", "NTT", "Nintendo"]
     factor = np.array([0.6, 0.4, -0.1, 0.2, 0.3])
-    matrix = 0.02 * np.outer(factor, factor) + np.diag(
-        [0.03, 0.05, 0.01, 0.06, 0.08]
-    )
+    matrix = 0.02 * np.outer(factor, factor) + np.diag([0.03, 0.05, 0.01, 0.06, 0.08])
     covariance = pd.DataFrame(matrix, index=assets, columns=assets)
     weights = hierarchical_risk_parity_weights(covariance)
     assert weights.index.tolist() == assets
