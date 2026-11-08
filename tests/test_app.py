@@ -55,7 +55,7 @@ def test_app_waits_for_explicit_run(offline_fetch) -> None:
     assert app.selectbox[0].options == list(ANALYSIS_STRATEGY_LABELS.values())
 
 
-@pytest.mark.parametrize("strategy", list(STRATEGY_LABELS))
+@pytest.mark.parametrize("strategy", list(ANALYSIS_STRATEGY_LABELS))
 def test_app_displays_net_metrics_and_percentage_charts(
     offline_fetch, sample_market_prices, monkeypatch, strategy
 ) -> None:
@@ -74,7 +74,7 @@ def test_app_displays_net_metrics_and_percentage_charts(
     assert not app.exception
     assert not app.error
     assert len(app.metric) == 4
-    label = STRATEGY_LABELS[strategy]
+    label = ANALYSIS_STRATEGY_LABELS[strategy]
     expected = run_sample_analysis(*sample_market_prices, strategy)
     assert app.metric[0].value == f"{expected.performance.loc[label, 'cagr']:.2%}"
     table = next(
@@ -355,7 +355,7 @@ def test_app_displays_rolling_risk_comparison(offline_fetch, monkeypatch) -> Non
 
     assert not app.exception
     assert not app.error
-    assert len(app.selectbox) == 5
+    assert len(app.selectbox) == 6
     rolling_selector = next(
         box for box in app.selectbox if box.label == "ローリング期間"
     )
