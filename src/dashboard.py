@@ -13,6 +13,7 @@ from src.portfolio import calculate_asset_returns
 from src.risk import conditional_value_at_risk, value_at_risk
 from src.rolling import rolling_risk_metrics
 from src.sample_config import (
+    ANALYSIS_STRATEGY_LABELS,
     BENCHMARK_TICKER,
     STRATEGY_LABELS,
 )
@@ -51,7 +52,7 @@ def run_sample_analysis(
     settings: DashboardSettings | None = None,
 ) -> SampleAnalysis:
     """Reuse the existing engine and metrics on one common OOS period."""
-    if strategy not in STRATEGY_LABELS:
+    if strategy not in ANALYSIS_STRATEGY_LABELS:
         raise ValueError(f"unsupported dashboard strategy: {strategy}")
     config = _resolve_settings(settings)
     asset_returns = calculate_asset_returns(asset_prices)
@@ -64,7 +65,7 @@ def run_sample_analysis(
         transaction_cost_rate=config.transaction_cost_rate,
     )
     returns = {
-        STRATEGY_LABELS[strategy]: backtest.net_returns,
+        ANALYSIS_STRATEGY_LABELS[strategy]: backtest.net_returns,
         "TOPIX": benchmark_returns,
     }
     aligned_returns = _align_strategy_returns(returns)
@@ -180,6 +181,7 @@ def run_sample_sensitivity(
     strategy: str = "equal_weight",
     *,
     settings: DashboardSettings | None = None,
+    max_workers: int = 1,
 ) -> SensitivityResult:
     """Analyze parameter sensitivity around selected baseline settings."""
     config = _resolve_settings(settings)
@@ -190,4 +192,5 @@ def run_sample_sensitivity(
         estimation_window=config.estimation_window,
         holding_period=config.holding_period,
         transaction_cost_rate=config.transaction_cost_rate,
+        max_workers=max_workers,
     )

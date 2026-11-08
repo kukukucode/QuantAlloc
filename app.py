@@ -14,12 +14,12 @@ from src.dashboard_settings import DashboardSettings
 from src.data_provider import fetch_prices
 from src.export import create_export_archive
 from src.sample_config import (
+    ANALYSIS_STRATEGY_LABELS,
     BENCHMARK_TICKER,
     END_DATE,
     ESTIMATION_WINDOW,
     HOLDING_PERIOD,
     START_DATE,
-    STRATEGY_LABELS,
     TICKERS,
     TRANSACTION_COST_RATE,
 )
@@ -39,7 +39,7 @@ def load_sample_prices(
 def display_analysis(result: SampleAnalysis) -> None:
     """Render metrics and existing chart data without rerunning a backtest."""
     summary = result.performance
-    strategy_label = STRATEGY_LABELS[result.strategy]
+    strategy_label = ANALYSIS_STRATEGY_LABELS[result.strategy]
     start = summary.attrs["start_date"].date()
     end = summary.attrs["end_date"].date()
     st.caption(
@@ -332,7 +332,7 @@ def display_comparison(result: StrategyComparison) -> None:
 
 def display_sensitivity(result) -> None:
     """Show three independent parameter sweeps."""
-    st.subheader(f"Parameter Sensitivity — {STRATEGY_LABELS[result.strategy]}")
+    st.subheader(f"Parameter Sensitivity — {ANALYSIS_STRATEGY_LABELS[result.strategy]}")
     st.caption(
         "選択戦略を、サイドバーで指定した条件を基準に再バックテストします。"
         "学習期間・保有期間・売買コストを1条件ずつ変更します。"
@@ -417,7 +417,7 @@ def display_export(
 def main() -> None:
     st.set_page_config(page_title="QuantAlloc", page_icon="📊", layout="wide")
     st.title("QuantAlloc")
-    st.caption("v0.23 Archive Verification & Replay")
+    st.caption("v0.25 HRP & Parallel Sensitivity")
     st.write(
         "既存10銘柄・選択した条件で配分戦略を選び、TOPIXとWalk-Forward成績を比較します。"
     )
@@ -425,8 +425,8 @@ def main() -> None:
         st.header("分析条件")
         strategy = st.selectbox(
             "戦略",
-            list(STRATEGY_LABELS),
-            format_func=STRATEGY_LABELS.__getitem__,
+            list(ANALYSIS_STRATEGY_LABELS),
+            format_func=ANALYSIS_STRATEGY_LABELS.__getitem__,
             key="selected_strategy",
         )
         st.caption("設定を変更すると、前回の分析結果は非表示になります。")
@@ -462,6 +462,14 @@ def main() -> None:
             transaction_cost_rate=cost_bps / 10000,
         )
 
+        workers = st.selectbox(
+            "感応度分析のプロセス数",
+            (1, 2, 4),
+            index=0,
+            key="selected_sensitivity_workers",
+        )
+        st.caption("並列処理は感応度分析のみ。メモリ使用量が増えるため初期値は1です。")
+
         st.write(f"Benchmark: {BENCHMARK_TICKER}（TOPIX ETF）")
         st.write("Covariance: Sample（最適化戦略）")
         st.write("Risk-free rate: 0% / No short / No leverage")
@@ -477,7 +485,8 @@ def main() -> None:
         st.session_state.pop("sample_analysis", None)
     if st.session_state.get("sample_comparison_request") != comparison_request:
         st.session_state.pop("sample_comparison", None)
-    if st.session_state.get("sample_sensitivity_request") != analysis_request:
+    sensitivity_request = (analysis_request, workers)
+    if st.session_state.get("sample_sensitivity_request") != sensitivity_request:
         st.session_state.pop("sample_sensitivity", None)
     if not any(
         key in st.session_state
@@ -542,10 +551,16 @@ def main() -> None:
         try:
             with st.spinner("パラメータ感応度を分析しています…"):
                 asset_prices, benchmark_prices = load_sample_prices(*price_request)
-                st.session_state["sample_sensitivity"] = run_sample_sensitivity(
-                    asset_prices, strategy, settings=settings
-                )
-                st.session_state["sample_sensitivity_request"] = analysis_request
+                if workers == 1:
+                    sensitivity = run_sample_sensitivity(
+                        asset_prices, strategy, settings=settings
+                    )
+                else:
+                    sensitivity = run_sample_sensitivity(
+                        asset_prices, strategy, settings=settings, max_workers=workers
+                    )
+                st.session_state["sample_sensitivity"] = sensitivity
+                st.session_state["sample_sensitivity_request"] = sensitivity_request
                 st.session_state["sample_export_inputs"] = (
                     asset_prices.copy(),
                     benchmark_prices.copy(),

@@ -6,3 +6,4 @@ scipy
 scikit-learn
 matplotlib
 streamlit>=1.49,<2
+threadpoolctl

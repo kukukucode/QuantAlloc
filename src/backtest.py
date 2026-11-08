@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from src.fast_backend import simulate_holding_period
+from src.hrp import hierarchical_risk_parity_weights
 from src.black_litterman import implied_equilibrium_returns
 from src.covariance import VALID_COVARIANCE_METHODS, estimate_covariance
 from src.optimization import (
@@ -26,6 +27,7 @@ VALID_STRATEGIES = frozenset(
         "maximum_sharpe",
         "risk_parity",
         "black_litterman",
+        "hierarchical_risk_parity",
     }
 )
 
@@ -173,6 +175,8 @@ def _calculate_weights(
         return minimum_variance_weights(covariance)
     if strategy == "risk_parity":
         return equal_risk_contribution_weights(covariance)
+    if strategy == "hierarchical_risk_parity":
+        return hierarchical_risk_parity_weights(covariance)
     if strategy == "black_litterman":
         config = (
             black_litterman(training_returns.copy(deep=True))

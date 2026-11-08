@@ -9,6 +9,7 @@ from streamlit.testing.v1 import AppTest
 
 from src.dashboard import run_sample_analysis
 from src.sample_config import (
+    ANALYSIS_STRATEGY_LABELS,
     BENCHMARK_TICKER,
     END_DATE,
     START_DATE,
@@ -51,10 +52,10 @@ def test_app_waits_for_explicit_run(offline_fetch) -> None:
     assert not app.metric
     assert offline_fetch == []
     assert app.info
-    assert app.selectbox[0].options == list(STRATEGY_LABELS.values())
+    assert app.selectbox[0].options == list(ANALYSIS_STRATEGY_LABELS.values())
 
 
-@pytest.mark.parametrize("strategy", list(STRATEGY_LABELS))
+@pytest.mark.parametrize("strategy", list(ANALYSIS_STRATEGY_LABELS))
 def test_app_displays_net_metrics_and_percentage_charts(
     offline_fetch, sample_market_prices, monkeypatch, strategy
 ) -> None:
@@ -73,7 +74,7 @@ def test_app_displays_net_metrics_and_percentage_charts(
     assert not app.exception
     assert not app.error
     assert len(app.metric) == 4
-    label = STRATEGY_LABELS[strategy]
+    label = ANALYSIS_STRATEGY_LABELS[strategy]
     expected = run_sample_analysis(*sample_market_prices, strategy)
     assert app.metric[0].value == f"{expected.performance.loc[label, 'cagr']:.2%}"
     table = next(
@@ -354,7 +355,7 @@ def test_app_displays_rolling_risk_comparison(offline_fetch, monkeypatch) -> Non
 
     assert not app.exception
     assert not app.error
-    assert len(app.selectbox) == 5
+    assert len(app.selectbox) == 6
     rolling_selector = next(
         box for box in app.selectbox if box.label == "ローリング期間"
     )
@@ -582,3 +583,20 @@ def test_app_export_uses_saved_prices(offline_fetch, monkeypatch) -> None:
         updated = json.loads(archive.read("manifest.json"))
 
     assert updated["settings"]["estimation_window"] == 252
+
+
+def test_app_hrp_parallel_sensitivity(offline_fetch) -> None:
+    app = AppTest.from_file(str(APP_PATH), default_timeout=120).run()
+    app.selectbox[0].select("hierarchical_risk_parity").run()
+    workers = next(
+        box for box in app.selectbox if box.label == "感応度分析のプロセス数"
+    )
+    workers.select(2).run()
+    app.button[2].click().run()
+
+    assert not app.exception
+    assert not app.error
+    assert app.session_state["sample_sensitivity"].strategy == (
+        "hierarchical_risk_parity"
+    )
+    assert len(offline_fetch) == 2
