@@ -10,10 +10,6 @@ import os
 
 import pandas as pd
 
-# Heuristic only. benchmarks/holding_kernel.py provides measured comparisons.
-_AUTO_RUST_MIN_ELEMENTS = 4096
-
-
 def _python_holding(
     target_weights: pd.Series,
     holding_returns: pd.DataFrame,
@@ -49,8 +45,7 @@ def simulate_holding_period(
     if mode not in {"auto", "python", "rust"}:
         raise ValueError("QUANTALLOC_ENGINE must be auto, python, or rust")
 
-    size = holding_returns.shape[0] * holding_returns.shape[1]
-    if mode == "python" or (mode == "auto" and size < _AUTO_RUST_MIN_ELEMENTS):
+    if mode == "python":
         return _python_holding(target_weights, holding_returns)
 
     try:
