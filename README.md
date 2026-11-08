@@ -1,188 +1,72 @@
 # QuantAlloc
 
-QuantAllocは、日本株ポートフォリオをPythonで定量分析し、TOPIXや複数の資産配分戦略と比較するプロジェクトです。
+日本株の資産配分を最適化し、TOPIXと運用成績を比較する定量分析アプリです。Pythonを中心に、一部の計算をRustで高速化しています。
 
-松尾研究所が提供する講座で学んだ内容を実践し、理解を深める目的で作成しました。
-
-Current version: **v0.24 Optional Python–Rust Hybrid Kernel**
+開発版：v0.24（Python・Rustハイブリッド）
 
 ## 主な機能
 
-- 日本株の資産配分最適化（最小分散・最大シャープレシオ・リスク均等配分・ブラック・リッターマン）
-- 時系列バックテストと東証株価指数（TOPIX）との比較（収益率・リスク・売買コスト）
-- 共分散推定、損失リスク分析、ストレス分析、分析条件の感応度分析
-- 画面上での戦略比較・条件変更・グラフ表示
-- 分析結果と株価データのZIP保存・整合性検証・再計算
-- PythonとRustを組み合わせた一部計算の高速化（Rustは任意）
+- 最小分散・最大シャープレシオ・リスク均等配分・ブラック・リッターマンによる資産配分
+- 時系列バックテストとTOPIX比較（収益率・リスク・売買コスト）
+- 共分散推定、損失リスク・ストレス・感応度分析
+- Streamlitでの戦略比較、条件変更、グラフ表示
+- 分析結果のZIP保存、整合性検証、再計算
 
-## Python + Rust ハイブリッド実行（v0.24）
+## 分析条件
 
-Pythonがデータ取得・検証・リバランス・SciPy最適化・評価を担当し、オプションのRust拡張が保有期間の日次リターンと終了時のウェイトドリフトを計算します。Rust側は日数×銘柄数の中間DataFrameを確保せず、銘柄数に比例する作業メモリを使用します。最大Sharpe最適化には解析勾配を導入し、有限差分による目的関数評価を削減します。改善率はデータ・銘柄数・環境次第であり、未測定の高速化を保証しません。
+初期設定は日本株10銘柄、学習期間504営業日、リバランス間隔63営業日、売買コスト10bpsです。ベンチマークにはTOPIX連動ETF（1306.T）を使用します。空売り・レバレッジは使用しません。
 
-従来どおりPythonのみで利用可能です。Rustのビルドは任意です。Rustツールチェーンを用意した環境で:
+Streamlit上では学習期間・リバランス間隔・売買コストを変更できます。銘柄と株価取得期間は現在固定です。
+
+## 実行方法
+
+Python 3.10以降を使用します。
+
+```bash
+python -m pip install -r requirements.txt
+
+# 分析結果をグラフとして保存
+python main.py
+
+# ブラウザで分析
+python -m streamlit run app.py
+
+# テスト
+python -m pytest -q
+```
+
+## Rustによる高速化（任意）
+
+Pythonがデータ取得・最適化・結果表示を担当し、Rustが保有期間の損益と保有比率の変化を計算します。Rustがなくても動作します。最大シャープレシオ最適化には解析的な勾配を使用します。
+
+Rustツールチェーンを導入済みの場合：
 
 ```bash
 python -m pip install "maturin>=1.10,<2"
 python -m maturin build --release --manifest-path rust/Cargo.toml --out dist
 python -m pip install dist/*.whl
-```
 
-実行時の切り替え:
-
-```bash
-# 従来のpandas計算。Rustのインストールは不要
-QUANTALLOC_ENGINE=python python -m pytest -q
-
-# Rust拡張を必須にする。未インストールなら明示的に失敗する
+# Rustとの数値一致テスト
 QUANTALLOC_ENGINE=rust python -m pytest -q tests/test_fast_backend.py tests/test_backtest.py
 
-# autoが標準。Rust拡張が利用できればRustを使い、未導入ならPythonに戻す
-QUANTALLOC_ENGINE=auto python -m benchmarks.holding_kernel
+# 処理速度の比較
+python -m benchmarks.holding_kernel
 ```
 
-Windowsの場合は環境変数をPowerShellの `$env:QUANTALLOC_ENGINE = "rust"` などで設定してください。
+実行エンジンは環境変数 `QUANTALLOC_ENGINE` で `auto`（標準）・`python`・`rust` を選択できます。高速化率は処理内容や環境に依存します。
 
-検証: Pythonのみの既存テストに加え、RustをビルドしたCIジョブで結果の数値一致、全損銘柄、ドリフト、売買コストのテストを実行します。Python版とRust版は浮動小数点の演算順が異なるため、微小な差を許容する比較です。保存ZIPの再計算では原則としてPython版を指定して実行すると、環境差を切り分けやすくなります。Rust有効時にも保存結果の再現性を保証するものではありません。
+## 保存データの検証
 
-今後の優先候補は、実測に基づく (1) 全戦略での共通共分散推定の再利用、(2) rolling windowの十分統計量更新、(3) 最大Sharpe最適化へのwarm start、(4) 銘柄数に応じたリスク因子・共分散の低ランク化です。前者は同じデータ期間・共分散推定法でのみ再利用でき、低ランク化は計算結果を変えるため従来モデルとは区別して評価します。実測なしに全面Rust化はしません。
-
-## 分析条件
-
-```text
-Estimation Window : 504 trading days
-Holding Period    : 63 trading days
-Benchmark         : 1306.T（TOPIX ETF）
-Risk-Free Rate    : 0%
-Transaction Cost  : 10 bps per turnover
-Short Selling     : No
-Leverage          : No
-Covariance        : Sample / Ledoit-Wolf
-```
-
-Historical Meanは過去の日次平均を252取引日で年率化します。Black-Littermanは各学習期間の共分散とmarket weightsからpriorを計算し、viewを反映したposteriorで配分を求めます。Risk Parityは共分散のみを使用します。
-
-BLのサンプルは**仮定の例**です。market weightsは下記の10銘柄均等配分で、時価総額データは取得しません。viewはToyota − Sonyの年率リターン差2%、δ=2.5、τ=0.05、Ω=0.0004です。Qは年率の総リターンに対するview、Ωはその不確実性の共分散です。
-
-BL入力は固定設定または学習期間だけを受け取る関数で渡せます。market weightsとviewにはリバランス時点で利用可能な情報を使用してください。初回配分のコストは0、Sum Costは各リバランスのコスト率の合計です。TOPIXの売買量・コストは推定せず「-」で表示します。
-
-Bootstrapは日次リターンの行を復元抽出し、固定配分で1,000回評価します。2.5%点・中央値・97.5%点を表示します。これはin-sample分析であり、将来の成績予測ではありません。
-
-VaR・CVaRは共通OOS期間の日次リターンから推定します。選択戦略は売買コスト控除後のNet、TOPIXはコスト未控除です。CVaRは最悪5%の部分における平均損失を表し、観測数に応じて端数の重みを使用します。いずれも過去データに基づく推定で、将来の損失上限ではありません。
-
-## サンプルポートフォリオ
-
-```text
-7203.T  Toyota                    10%
-6758.T  Sony                      10%
-8306.T  MUFG                      10%
-9432.T  NTT                       10%
-8058.T  Mitsubishi Corporation    10%
-7974.T  Nintendo                  10%
-3003.T  HULIC                     10%
-6501.T  Hitachi                   10%
-9983.T  Fast Retailing            10%
-4661.T  Oriental Land             10%
-```
-
-## 実行方法
+画面から出力したZIPは、通信なしで整合性の確認とバックテストの再計算ができます。
 
 ```bash
-python -m pip install -r requirements.txt
-python main.py
-```
-
-`outputs/charts/`にNet累積リターン、Drawdown、5戦略の配分ヒートマップを保存します。
-成績グラフは共通OOS期間の日次リターンを複利計算し、TOPIXは取得したベンチマークのリターンをそのまま使用します（売買コストは推定しません）。
-配分ヒートマップは全リバランスのtarget weightで、日々driftした保有比率ではありません。GUIは不要です。
-
-Streamlit画面:
-
-```bash
-python -m streamlit run app.py
-```
-
-Equal Weight／Minimum Variance／Maximum Sharpe／Risk Parityから戦略を選び、「分析を実行」で取得・計算します。銘柄・期間は固定で、学習／保有日数・売買コストは画面で選択でき、最適化にはSample共分散を使います。BLは画面では選択できません。
-価格は取得条件ごとに1時間キャッシュし、戦略切り替えでは再取得しません。選択を変えると前の結果を消し、再実行を待ちます。最適化失敗時に別戦略へ切り替えることはありません。
-
-Streamlitの「4戦略を比較」では、Equal Weight、Minimum Variance、Maximum Sharpe、Risk Parity、TOPIXを同一OOS期間で比較します。4戦略は売買コスト控除後のNetリターン、TOPIXは売買コスト未控除のリターンを使用します。従来の1戦略選択・分析機能も利用できます。
-
-Rolling Risk Analysisでは、共通OOS期間の日次リターンから63・126・252営業日の年率VolatilityとSharpeを計算します。年率換算は252営業日、リスクフリーレートは0%です。戦略には売買コスト控除後のNetリターンを使用します。観測数が足りない期間やVolatilityが実質0の期間では、計算できない指標を欠損値として扱います。
-
-Stress Testingでは、共通OOS期間のTOPIX日次リターンから、21営業日累積リターンが最も低い期間を事後的に抽出します。その同じ期間の4戦略とTOPIXについて、累積リターン、最大Drawdown、回復日数を比較します。回復日数はストレス期間終了後、期間開始前の資産価値を回復するまでの営業日数です。期間終了時点で回復済みなら0日、観測期間中に回復しなければ未回復とします。4戦略は売買コスト控除後、TOPIXは売買コスト未控除です。この分析は過去の厳しい市場局面を振り返るもので、将来の暴落を予測するものではありません。
-
-Factor Exposure Analysisでは、共通OOS期間の4戦略とTOPIXの日次リターンを使用し、TOPIXを説明変数とする単一市場ファクター回帰を行います。Market Betaは市場への感応度、Annual Alphaは日次回帰切片を252営業日で算術年率化した値、R²は市場モデルによる変動の説明割合です。4戦略には売買コスト控除後のNetリターン、TOPIXには売買コスト未控除のリターンを使用します。市場リターンの分散が実質0の場合、指標は算出不可です。定数リターン系列のR²も算出不可とします。Alphaの統計的有意性は検定しておらず、因果関係や将来の超過収益を示すものではありません。
-
-Parameter Sensitivity Analysisでは、選択戦略について学習期間252・378・504営業日、リバランス頻度21・63・126・252営業日、売買コスト0・10・30bpsをそれぞれ独立に変更してWalk-Forward検証します。各比較表では共通OOS期間を使用します。評価指標はCAGR・Volatility・Sharpe・Max Drawdownとリバランスコスト率の合計です。履歴不足の設定はInsufficient historyと表示します。異なる表では評価期間が異なる場合があり、結果は将来の成績を保証するものではありません。
-
-Interactive Dashboard Parametersでは、学習期間252・378・504営業日、リバランス頻度21・63・126・252営業日、売買コスト0・10・30bpsをサイドバーで選択できます。初期値は504営業日・63営業日・10bpsです。選択条件は1戦略分析、4戦略比較、感応度分析に反映されます。設定を変更すると過去の分析結果は破棄されますが、取得条件が同じ価格データはキャッシュから再利用します。履歴不足の条件ではバックテストを実行できません。
-
-Export & Reproducibilityでは、分析結果を表示した後に結果と設定をZIPで保存できます。ZIPには分析内容に応じた結果CSV、使用した銘柄・TOPIX ETFの価格データCSV、manifest.jsonが含まれます。manifest.jsonは戦略・学習期間・リバランス頻度・売買コスト・価格取得条件・共通OOS評価期間・各CSVのSHA-256ハッシュを記録します。保存時にバックテストを再実行することはありません。CSV内のリターンやリスク指標は原則として小数形式です。価格データは分析実行時のスナップショットです。SHA-256はファイルの整合性確認に利用できますが、データの正確性や取得元の真正性を保証しません。将来の完全な再現にはPython・依存ライブラリのバージョン、ソースコード、実行環境の固定も必要です。
-
-## 保存済みZIPの検証
-
-v0.23では、v0.22形式で出力したZIPをローカル環境で検証できます。
-
-チェックサムとファイル構成のみを検証する場合:
-
-```bash
+# チェックサム・ファイル構成を検証
 python -m src.export_verify quantalloc_v022_analysis.zip --integrity-only
-```
 
-保存した入力データを使って分析を再実行し、結果CSVも照合する場合:
-
-```bash
+# 保存データで分析を再計算
 python -m src.export_verify quantalloc_v022_analysis.zip
 ```
 
-ZIPファイルのパスは保存先に合わせて指定してください。
-成功時は `VERIFICATION PASSED`、失敗時は `VERIFICATION FAILED` と表示されます。
-失敗時の終了コードは1です。
+## 注意事項
 
-検証対象は1戦略分析・4戦略比較・パラメータ感応度分析です。
-再実行には保存済みの価格データを使用し、Yahoo Financeへの再アクセスは行いません。
-数値の照合には浮動小数点演算による微小な差を許容します。
-
-SHA-256の一致はファイルの整合性確認に役立ちますが、
-第三者による改ざんがないことを証明する電子署名ではありません。
-再実行結果の一致も、異なるPython・依存ライブラリ・
-ソースコード環境での完全な再現を保証するものではありません。
-
-テスト:
-
-```bash
-python -m pytest -q
-```
-
-## ファイル構成
-
-```text
-QuantAlloc/
-├── src/
-│   ├── backtest.py
-│   ├── benchmark.py
-│   ├── black_litterman.py
-│   ├── covariance.py
-│   ├── data_provider.py
-│   ├── dashboard.py
-│   ├── dashboard_settings.py
-│   ├── diversification.py
-│   ├── evaluation.py
-│   ├── export.py
-│   ├── export_verify.py
-│   ├── factor.py
-│   ├── metrics.py
-│   ├── optimization.py
-│   ├── portfolio.py
-│   ├── risk.py
-│   ├── risk_parity.py
-│   ├── rolling.py
-│   ├── sample_config.py
-│   ├── sensitivity.py
-│   ├── stress.py
-│   └── visualization.py
-├── tests/
-├── app.py
-├── main.py
-├── requirements.txt
-└── README.md
-```
+株価はYahoo Financeから取得します。分析結果は過去データに基づくもので、将来の運用成績を保証しません。TOPIX側の売買コストは控除していません。ブラック・リッターマンのサンプル見通しは説明用の仮定です。ZIPのハッシュ検証はデータの真正性を証明するものではありません。
