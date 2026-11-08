@@ -4,7 +4,7 @@ QuantAllocは、日本株ポートフォリオをPythonで定量分析し、TOPI
 
 松尾研究所が提供する講座で学んだ内容を実践し、理解を深める目的で作成しました。
 
-Current version: **v0.23 Archive Verification & Replay**
+Current version: **v0.24 Optional Python–Rust Hybrid Kernel**
 
 ## 主な機能
 
@@ -36,6 +36,37 @@ Current version: **v0.23 Archive Verification & Replay**
 - 1戦略分析・4戦略比較・感応度分析の結果、使用した価格データ、分析設定、SHA-256チェックサムをZIPで一括出力
 
 - 保存済みZIPのSHA-256・ファイル構成を検証し、価格データと設定から分析をオフラインで再実行して結果を照合
+
+## Python + Rust ハイブリッド実行（v0.24）
+
+Pythonがデータ取得・検証・リバランス・SciPy最適化・評価を担当し、オプションのRust拡張が保有期間の日次リターンと終了時のウェイトドリフトを計算します。Rust側は日数×銘柄数の中間DataFrameを確保せず、銘柄数に比例する作業メモリを使用します。最大Sharpe最適化には解析勾配を導入し、有限差分による目的関数評価を削減します。改善率はデータ・銘柄数・環境次第であり、未測定の高速化を保証しません。
+
+従来どおりPythonのみで利用可能です。Rustのビルドは任意です。Rustツールチェーンを用意した環境で:
+
+```bash
+python -m pip install "maturin>=1.10,<2"
+python -m maturin build --release --manifest-path rust/Cargo.toml --out dist
+python -m pip install dist/*.whl
+```
+
+実行時の切り替え:
+
+```bash
+# 従来のpandas計算。Rustのインストールは不要
+QUANTALLOC_ENGINE=python python -m pytest -q
+
+# Rust拡張を必須にする。未インストールなら明示的に失敗する
+QUANTALLOC_ENGINE=rust python -m pytest -q tests/test_fast_backend.py tests/test_backtest.py
+
+# autoが標準。4,096要素以上の保有期間計算でRustを試し、未導入ならPythonに戻す
+QUANTALLOC_ENGINE=auto python -m benchmarks.holding_kernel
+```
+
+Windowsの場合は環境変数をPowerShellの `$env:QUANTALLOC_ENGINE = "rust"` などで設定してください。
+
+検証: Pythonのみの既存テストに加え、RustをビルドしたCIジョブで結果の数値一致、全損銘柄、ドリフト、売買コストのテストを実行します。Python版とRust版は浮動小数点の演算順が異なるため、微小な差を許容する比較です。保存ZIPの再計算では原則としてPython版を指定して実行すると、環境差を切り分けやすくなります。Rust有効時にも保存結果の再現性を保証するものではありません。
+
+今後の優先候補は、実測に基づく (1) 全戦略での共通共分散推定の再利用、(2) rolling windowの十分統計量更新、(3) 最大Sharpe最適化へのwarm start、(4) 銘柄数に応じたリスク因子・共分散の低ランク化です。前者は同じデータ期間・共分散推定法でのみ再利用でき、低ランク化は計算結果を変えるため従来モデルとは区別して評価します。実測なしに全面Rust化はしません。
 
 ## 分析条件
 
