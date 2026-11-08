@@ -126,7 +126,10 @@ def test_native_total_loss_of_one_asset_when_available(monkeypatch):
     np.testing.assert_allclose(ending, [0.0, 1.0])
 
 
-def test_maximum_sharpe_gradient_matches_finite_differences(monkeypatch):
+@pytest.mark.parametrize("risk_free_rate", [0.0, 0.025])
+def test_maximum_sharpe_gradient_matches_finite_differences(
+    monkeypatch, risk_free_rate
+):
     import src.optimization as module
 
     x = np.array([0.3, 0.4, 0.3])
@@ -156,5 +159,5 @@ def test_maximum_sharpe_gradient_matches_finite_differences(monkeypatch):
         return solve(objective, asset_count, constraints, **kwargs)
 
     monkeypatch.setattr(module, "_solve", checked_solve)
-    result = maximum_sharpe_weights(means, covariance)
+    result = maximum_sharpe_weights(means, covariance, risk_free_rate)
     assert result.sum() == pytest.approx(1.0)
