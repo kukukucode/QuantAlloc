@@ -171,11 +171,11 @@ def test_cost_sweep_runs_optimization_only_once(asset_returns, monkeypatch) -> N
     assert calls == [(504, 63, 0.0)]
 
 
-@pytest.mark.parametrize("strategy", ["equal_weight", "minimum_variance", "maximum_sharpe", "risk_parity"])
+@pytest.mark.parametrize(
+    "strategy", ["equal_weight", "minimum_variance", "maximum_sharpe", "risk_parity"]
+)
 @pytest.mark.parametrize("cost", [0.0, 0.001, 0.003])
-def test_repriced_returns_match_full_backtest(
-    asset_returns, strategy, cost
-) -> None:
+def test_repriced_returns_match_full_backtest(asset_returns, strategy, cost) -> None:
     gross = walk_forward_backtest(
         asset_returns,
         strategy,
@@ -212,9 +212,7 @@ def test_repricing_rejects_unaffordable_costs(monkeypatch) -> None:
             pd.Series({"A": 1.0, "B": 0.0}),
         ]
     )
-    monkeypatch.setattr(
-        "src.backtest._calculate_weights", lambda *args: next(targets)
-    )
+    monkeypatch.setattr("src.backtest._calculate_weights", lambda *args: next(targets))
     returns = pd.DataFrame(
         {"A": [0.0] * 6, "B": [0.0] * 6},
         index=pd.bdate_range("2024-01-01", periods=6),
