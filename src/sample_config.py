@@ -25,3 +25,10 @@ STRATEGY_LABELS = {
     "maximum_sharpe": "Maximum Sharpe",
     "risk_parity": "Risk Parity",
 }
+
+# Keep the original four-strategy comparison and exported archives unchanged.
+# HRP is an additional option for single-strategy and sensitivity analysis.
+ANALYSIS_STRATEGY_LABELS = {
+    **STRATEGY_LABELS,
+    "hierarchical_risk_parity": "Hierarchical Risk Parity (HRP)",
+}
