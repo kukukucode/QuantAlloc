@@ -10,6 +10,7 @@ import os
 
 import pandas as pd
 
+
 def _python_holding(
     target_weights: pd.Series,
     holding_returns: pd.DataFrame,
