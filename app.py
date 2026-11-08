@@ -20,7 +20,6 @@ from src.sample_config import (
     ESTIMATION_WINDOW,
     HOLDING_PERIOD,
     START_DATE,
-    STRATEGY_LABELS,
     TICKERS,
     TRANSACTION_COST_RATE,
 )
