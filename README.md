@@ -8,34 +8,12 @@ Current version: **v0.24 Optional Python–Rust Hybrid Kernel**
 
 ## 主な機能
 
-- Yahoo Financeの日本株・東証ETFデータからCAGR、年率Volatility、Sharpe、Max Drawdownを計算し、TOPIXと比較
-- 相関・共分散、HHI、Effective Number of Assets、Risk Contributionを分析
-- Minimum Variance、Maximum Sharpe、Efficient Frontier、Risk Parity / ERCを計算
-- Walk-ForwardでWeight Drift、Turnover、コスト、Gross / Net、21・63・126・252日のリバランス頻度を評価
-- Sample CovarianceとLedoit-Wolf ShrinkageのOOS成績・Weight安定性を比較
-- Black-Littermanのprior・P/Q/Ω検証・posteriorから配分を求め、Historical Mean / TOPIXと共通OOS期間で比較
-- 各戦略とTOPIXのNet累積リターン・Drawdown、および戦略ごとのtarget weight推移をPNGで保存
-- Streamlitで4戦略を選択し、TOPIXとの指標・累積リターン・Drawdown・target weightを表示
-
-- i.i.d. Bootstrapによる固定配分ポートフォリオのCAGR・Volatility・Sharpe・Max Drawdownの頑健性分析
-
-- Historical VaR 95%・CVaR 95%による日次下方リスク分析。Streamlitで選択戦略とTOPIXを共通OOS期間で比較
-
-- Streamlitで4戦略とTOPIXのCAGR・Volatility・Sharpe・Max Drawdown・VaR・CVaRを一括比較し、累積リターンとDrawdownを同一グラフで表示
-
-- 63・126・252営業日のRolling Volatility・Rolling Sharpeを計算し、Streamlitで4戦略とTOPIXのリスク変化を時系列比較
-
-- TOPIXの21営業日累積リターンが最も低い共通OOS期間を抽出し、4戦略とTOPIXの期間リターン・最大Drawdown・回復日数を比較
-
-- TOPIXを市場ファクターとする日次単回帰でMarket Beta・Annual Alpha・R²を推定し、Streamlitで4戦略を比較
-
-- Parameter Sensitivity Analysis: 学習期間・リバランス頻度・売買コストを1条件ずつ変更し、共通OOS期間のNet成績を比較
-
-- Streamlitで学習期間・リバランス頻度・売買コストを変更し、分析結果の再計算とキャッシュ管理に反映
-
-- 1戦略分析・4戦略比較・感応度分析の結果、使用した価格データ、分析設定、SHA-256チェックサムをZIPで一括出力
-
-- 保存済みZIPのSHA-256・ファイル構成を検証し、価格データと設定から分析をオフラインで再実行して結果を照合
+- 日本株のポートフォリオ最適化（最小分散・最大Sharpe・Risk Parity・Black–Litterman）
+- Walk-ForwardバックテストとTOPIX比較（収益・リスク・売買コスト）
+- 共分散推定、VaR/CVaR、ストレステスト、感応度分析
+- Streamlitでの戦略比較・条件変更・グラフ表示
+- 分析結果と価格データのZIP保存・検証・再実行
+- Python＋Rustによる一部計算の高速化（Rustは任意）
 
 ## Python + Rust ハイブリッド実行（v0.24）
 
