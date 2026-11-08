@@ -90,9 +90,7 @@ _WORKER_STRATEGY: str | None = None
 _WORKER_BLAS_LIMIT = None
 
 
-def _initialize_sensitivity_worker(
-    asset_returns: pd.DataFrame, strategy: str
-) -> None:
+def _initialize_sensitivity_worker(asset_returns: pd.DataFrame, strategy: str) -> None:
     global _WORKER_RETURNS, _WORKER_STRATEGY, _WORKER_BLAS_LIMIT
     _WORKER_RETURNS = asset_returns
     _WORKER_STRATEGY = strategy
@@ -135,7 +133,11 @@ def run_parameter_sensitivity(
     """
     if strategy not in ANALYSIS_STRATEGY_LABELS:
         raise ValueError(f"unsupported strategy: {strategy}")
-    if isinstance(max_workers, bool) or not isinstance(max_workers, int) or not 1 <= max_workers <= 4:
+    if (
+        isinstance(max_workers, bool)
+        or not isinstance(max_workers, int)
+        or not 1 <= max_workers <= 4
+    ):
         raise ValueError("max_workers must be an integer between 1 and 4")
     if not isinstance(asset_returns, pd.DataFrame):
         raise TypeError("asset_returns must be a DataFrame")
