@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-import src.sensitivity as sensitivity
+from src import sensitivity
 from src.portfolio import calculate_asset_returns
 
 
