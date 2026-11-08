@@ -152,6 +152,8 @@ def _calculate_weights(
     risk_free_rate: float,
     covariance_method: str,
     black_litterman: BlackLittermanConfig | BlackLittermanProvider | None = None,
+    *,
+    covariance: pd.DataFrame | None = None,
 ) -> pd.Series:
     """Calculate weights using training data only."""
     if strategy == "equal_weight":
@@ -162,10 +164,11 @@ def _calculate_weights(
             name="equal_weight",
         )
 
-    covariance = estimate_covariance(
-        training_returns,
-        method=covariance_method,
-    )
+    if covariance is None:
+        covariance = estimate_covariance(
+            training_returns,
+            method=covariance_method,
+        )
     if strategy == "minimum_variance":
         return minimum_variance_weights(covariance)
     if strategy == "risk_parity":
@@ -219,6 +222,7 @@ def walk_forward_backtest(
     covariance_method: str = "sample",
     *,
     black_litterman: BlackLittermanConfig | BlackLittermanProvider | None = None,
+    _covariance_cache: dict[tuple[int, int, str], pd.DataFrame] | None = None,
 ) -> BacktestResult:
     """Run a rolling, fixed-holding-period out-of-sample backtest.
 
@@ -271,13 +275,32 @@ def walk_forward_backtest(
 
         training = validated.iloc[train_start_position:test_start_position]
         test = validated.iloc[test_start_position:test_end_position]
-        weights = _calculate_weights(
-            training,
-            strategy,
-            risk_free_rate,
-            covariance_method,
-            black_litterman,
-        ).reindex(validated.columns)
+        if _covariance_cache is not None and strategy != "equal_weight":
+            # A fresh cache is shared only across runs on the same return data.
+            # Position and estimator identify the exact training window.
+            key = (train_start_position, test_start_position, covariance_method)
+            if key not in _covariance_cache:
+                _covariance_cache[key] = estimate_covariance(
+                    training,
+                    method=covariance_method,
+                )
+            weights = _calculate_weights(
+                training,
+                strategy,
+                risk_free_rate,
+                covariance_method,
+                black_litterman,
+                covariance=_covariance_cache[key],
+            )
+        else:
+            weights = _calculate_weights(
+                training,
+                strategy,
+                risk_free_rate,
+                covariance_method,
+                black_litterman,
+            )
+        weights = weights.reindex(validated.columns)
 
         if previous_ending_weights is None:
             before_rebalance = weights.copy()

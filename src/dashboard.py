@@ -116,6 +116,9 @@ def run_strategy_comparison(
     asset_returns = calculate_asset_returns(asset_prices)
     benchmark_returns = calculate_benchmark_returns(benchmark_prices, BENCHMARK_TICKER)
 
+    # All strategies use the same return data and training windows.
+    # Keep the cache local to this comparison to prevent cross-request reuse.
+    covariance_cache: dict[tuple[int, int, str], pd.DataFrame] = {}
     backtests = {
         strategy: walk_forward_backtest(
             asset_returns,
@@ -123,6 +126,7 @@ def run_strategy_comparison(
             estimation_window=config.estimation_window,
             holding_period=config.holding_period,
             transaction_cost_rate=config.transaction_cost_rate,
+            _covariance_cache=covariance_cache,
         )
         for strategy in STRATEGY_LABELS
     }
