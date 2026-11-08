@@ -181,9 +181,9 @@ def maximum_sharpe_weights(
         if variance <= 0.0:
             # The objective itself is not differentiable at zero variance.
             return np.zeros_like(values)
-        excess_return = float(values @ excess_returns)
+        excess_return = float(values @ return_values) - risk_free_rate
         return (
-            -excess_returns / math.sqrt(variance)
+            -return_values / math.sqrt(variance)
             + excess_return * sigma_weights / (variance ** 1.5)
         )
 
