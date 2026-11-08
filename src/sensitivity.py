@@ -1,17 +1,20 @@
 """One-factor-at-a-time walk-forward parameter sensitivity."""
 
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, replace
+from multiprocessing import get_context
 
 import numpy as np
 import pandas as pd
+from threadpoolctl import threadpool_limits
 
 from src.backtest import BacktestResult, walk_forward_backtest
 from src.dashboard_settings import DashboardSettings
 from src.evaluation import _align_strategy_returns, performance_summary
 from src.sample_config import (
+    ANALYSIS_STRATEGY_LABELS,
     ESTIMATION_WINDOW,
     HOLDING_PERIOD,
-    STRATEGY_LABELS,
     TRANSACTION_COST_RATE,
 )
 
@@ -81,6 +84,38 @@ def _reprice_backtest(
     )
 
 
+# Initialized once per worker to avoid serializing prices for every scenario.
+_WORKER_RETURNS: pd.DataFrame | None = None
+_WORKER_STRATEGY: str | None = None
+_WORKER_BLAS_LIMIT = None
+
+
+def _initialize_sensitivity_worker(
+    asset_returns: pd.DataFrame, strategy: str
+) -> None:
+    global _WORKER_RETURNS, _WORKER_STRATEGY, _WORKER_BLAS_LIMIT
+    _WORKER_RETURNS = asset_returns
+    _WORKER_STRATEGY = strategy
+    # Prevent several BLAS threads in each process from oversubscribing CPU.
+    _WORKER_BLAS_LIMIT = threadpool_limits(limits=1)
+
+
+def _run_sensitivity_worker(
+    key: tuple[int, int],
+) -> tuple[tuple[int, int], BacktestResult]:
+    if _WORKER_RETURNS is None or _WORKER_STRATEGY is None:
+        raise RuntimeError("sensitivity worker is not initialized")
+    estimation_window, holding_period = key
+    result = walk_forward_backtest(
+        _WORKER_RETURNS,
+        _WORKER_STRATEGY,
+        estimation_window=estimation_window,
+        holding_period=holding_period,
+        transaction_cost_rate=0.0,
+    )
+    return key, result
+
+
 def run_parameter_sensitivity(
     asset_returns: pd.DataFrame,
     strategy: str,
@@ -91,14 +126,17 @@ def run_parameter_sensitivity(
     estimation_windows: tuple[int, ...] = (252, 378, 504),
     holding_periods: tuple[int, ...] = (21, 63, 126, 252),
     transaction_cost_rates: tuple[float, ...] = (0.0, 0.001, 0.003),
+    max_workers: int = 1,
 ) -> SensitivityResult:
     """Change one parameter at a time, aligning OOS dates within each sweep.
 
     Infeasible scenarios are shown explicitly instead of silently replacing
     them with different parameter values. Identical configurations are cached.
     """
-    if strategy not in STRATEGY_LABELS:
+    if strategy not in ANALYSIS_STRATEGY_LABELS:
         raise ValueError(f"unsupported strategy: {strategy}")
+    if isinstance(max_workers, bool) or not isinstance(max_workers, int) or not 1 <= max_workers <= 4:
+        raise ValueError("max_workers must be an integer between 1 and 4")
     if not isinstance(asset_returns, pd.DataFrame):
         raise TypeError("asset_returns must be a DataFrame")
     if asset_returns.empty:
@@ -124,9 +162,44 @@ def run_parameter_sensitivity(
         "transaction_cost_rate": config.transaction_cost_rate,
     }
 
-    # Costs do not affect weights or turnover in the current engine.
-    # Cache the cost-free optimization by (training window, holding period).
-    gross_cache: dict[tuple[int, int], BacktestResult] = {}
+    # Only independent (estimation_window, holding_period) pairs are scheduled.
+    # Different transaction costs reuse the same cost-free backtest.
+    keys: list[tuple[int, int]] = []
+    for parameter, options in sweeps.items():
+        feasible = False
+        for value in options:
+            settings = baseline.copy()
+            settings[parameter] = value
+            key = (settings["estimation_window"], settings["holding_period"])
+            if len(asset_returns) >= sum(key):
+                feasible = True
+                if key not in keys:
+                    keys.append(key)
+        if not feasible:
+            raise ValueError(f"no feasible scenarios for {parameter}")
+
+    if max_workers > 1 and len(keys) > 1:
+        # spawn works across platforms and prevents unsafe fork of BLAS/Rust.
+        # The input frame is copied once per process; keep worker count small.
+        with ProcessPoolExecutor(
+            max_workers=min(max_workers, len(keys)),
+            mp_context=get_context("spawn"),
+            initializer=_initialize_sensitivity_worker,
+            initargs=(asset_returns, strategy),
+        ) as pool:
+            gross_cache = dict(pool.map(_run_sensitivity_worker, keys))
+    else:
+        gross_cache = {
+            (training, holding): walk_forward_backtest(
+                asset_returns,
+                strategy,
+                estimation_window=training,
+                holding_period=holding,
+                transaction_cost_rate=0.0,
+            )
+            for training, holding in keys
+        }
+
     cache: dict[tuple[int, int, float], BacktestResult] = {}
     tables = {}
 
@@ -150,14 +223,6 @@ def run_parameter_sensitivity(
 
             if key not in cache:
                 gross_key = (training, holding)
-                if gross_key not in gross_cache:
-                    gross_cache[gross_key] = walk_forward_backtest(
-                        asset_returns,
-                        strategy,
-                        estimation_window=training,
-                        holding_period=holding,
-                        transaction_cost_rate=0.0,
-                    )
                 cache[key] = _reprice_backtest(gross_cache[gross_key], cost)
 
             scenarios[value] = cache[key]
