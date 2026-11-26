@@ -1,14 +1,24 @@
+export type MarketId = 'jp' | 'us'
+
 export type AnalysisRequest = {
   start_date: string
   end_date: string
   strategy: string
+  market: MarketId
+  tickers: string[]
 }
 
 export type AnalysisConfig = {
   defaults: AnalysisRequest
   strategies: Record<string, string>
-  benchmark_ticker: string
-  asset_count: number
+  markets: Record<MarketId, {
+    label: string
+    currency: string
+    benchmark_ticker: string
+    benchmark_label: string
+    default_tickers: string[]
+  }>
+  max_tickers: number
   estimation_window: number
   holding_period: number
   transaction_cost_bps: number
@@ -25,6 +35,9 @@ export type PerformanceRow = {
 
 export type AnalysisResponse = {
   requested: AnalysisRequest
+  benchmark_label: string
+  benchmark_ticker: string
+  currency: string
   evaluation: { start_date: string; end_date: string; observations: number }
   performance: PerformanceRow[]
   cumulative_returns: { date: string; strategy: number; benchmark: number }[]
@@ -43,7 +56,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     const body = await response.json().catch(() => null)
     const detail = body?.detail
     if (typeof detail === 'string') throw new Error(detail)
-    if (response.status === 422) throw new Error('入力した日付と戦略を確認してください。')
+    if (response.status === 422) throw new Error('銘柄、期間、戦略の入力を確認してください。')
     throw new Error('分析APIから応答を取得できませんでした。再度お試しください。')
   }
 

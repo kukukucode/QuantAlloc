@@ -72,7 +72,9 @@ def test_api_matches_streamlit_for_identical_prices_and_settings(
         ]
         * 2
     )
-    assert payload["requested"] == REQUEST
+    assert payload["requested"] == REQUEST | {"market": "jp", "tickers": TICKERS}
+    assert payload["benchmark_label"] == "TOPIX"
+    assert payload["currency"] == "JPY"
     summary = result.performance
     assert payload["evaluation"] == {
         "start_date": summary.attrs["start_date"].date().isoformat(),
@@ -104,6 +106,13 @@ def test_api_matches_streamlit_for_identical_prices_and_settings(
         {"end_date": "invalid"},
         {"end_date": "9999-12-31"},
         {"strategy": "unknown"},
+        {"market": "unknown"},
+        {"market": "us", "tickers": ["7203.T"]},
+        {"market": "us", "tickers": ["BTC-USD"]},
+        {"market": "jp", "tickers": ["AAPL"]},
+        {"tickers": ["7203", "7203.t"]},
+        {"tickers": []},
+        {"tickers": [str(7200 + index) for index in range(api.MAX_TICKERS + 1)]},
     ],
 )
 def test_api_rejects_invalid_requests_before_fetching(monkeypatch, overrides) -> None:
@@ -130,6 +139,47 @@ def test_api_reports_insufficient_prices(monkeypatch, sample_market_prices) -> N
     assert response.status_code == 422
     assert "568営業日分" in response.json()["detail"]
     assert "10営業日分" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    ("market", "inputs", "tickers", "benchmark", "label", "currency"),
+    [
+        ("jp", [" 130a ", "6758.t"], ["130A.T", "6758.T"], "1306.T", "TOPIX", "JPY"),
+        ("us", ["brk.b", "msft"], ["BRK-B", "MSFT"], "VOO", "S&P 500", "USD"),
+    ],
+)
+def test_api_uses_selected_market_and_tickers(
+    monkeypatch,
+    sample_market_prices,
+    market,
+    inputs,
+    tickers,
+    benchmark,
+    label,
+    currency,
+) -> None:
+    asset_prices, benchmark_prices = sample_market_prices
+    calls = []
+
+    def fetch(symbols, *args):
+        calls.append(symbols)
+        if symbols == [benchmark]:
+            return benchmark_prices.set_axis(symbols, axis="columns")
+        return asset_prices.iloc[:, : len(symbols)].set_axis(symbols, axis="columns")
+
+    monkeypatch.setattr(api, "fetch_prices", fetch)
+    response = call_api(
+        "POST", "/api/analysis", json=REQUEST | {"market": market, "tickers": inputs}
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert calls == [tickers, [benchmark]]
+    assert payload["requested"]["tickers"] == tickers
+    assert payload["benchmark_ticker"] == benchmark
+    assert payload["benchmark_label"] == label
+    assert payload["currency"] == currency
+    assert payload["performance"][1]["label"] == label
+    assert len(payload["cumulative_returns"]) == payload["evaluation"]["observations"]
 
 
 def test_api_serializes_undefined_sharpe_as_null(

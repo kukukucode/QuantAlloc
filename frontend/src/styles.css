@@ -117,11 +117,13 @@ label {
 }
 input,
 select,
+textarea,
 button {
   font: inherit;
 }
 input,
-select {
+select,
+textarea {
   display: block;
   min-height: 42px;
   width: 100%;
@@ -132,6 +134,9 @@ select {
   border-radius: 6px;
   padding: 8px;
   margin-bottom: 14px;
+}
+textarea {
+  resize: vertical;
 }
 :focus-visible {
   outline: 2px solid var(--accent);
