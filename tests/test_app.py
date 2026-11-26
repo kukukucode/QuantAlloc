@@ -1,5 +1,6 @@
 """Exercise the real Streamlit script without network access."""
 
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -8,6 +9,7 @@ import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from src.dashboard import run_sample_analysis
+from src.export_verify import verify_export_archive
 from src.sample_config import (
     ANALYSIS_STRATEGY_LABELS,
     BENCHMARK_TICKER,
@@ -166,23 +168,55 @@ def test_app_reports_insufficient_history(
     app = AppTest.from_file(str(APP_PATH), default_timeout=30).run()
     app.button[0].click().run()
     assert not app.exception
-    assert "567 observations" in app.error[0].value
+    assert "568営業日分必要" in app.error[0].value
+    assert "550営業日分しか取得" in app.error[0].value
     assert not app.metric
 
 
 def test_app_invalidates_result_and_cache_after_date_change(
     offline_fetch, monkeypatch
 ) -> None:
+    archives = []
+
+    def capture_download(label, *, data, **kwargs):
+        archives.append(data)
+        return False
+
+    monkeypatch.setattr(st, "download_button", capture_download)
     app = AppTest.from_file(str(APP_PATH), default_timeout=30).run()
     app.button[0].click().run()
     assert len(app.metric) == 4
-    monkeypatch.setattr("src.sample_config.START_DATE", "2021-04-01")
-    app.run()
+    assert len(archives) == 1
+
+    app.date_input(key="selected_start_date").set_value(date(2021, 4, 1))
+    app.date_input(key="selected_end_date").set_value(date(2025, 7, 31)).run()
     assert not app.metric
+    assert len(archives) == 1
+    assert len(offline_fetch) == 2
+    assert "sample_export_inputs" not in app.session_state
     app.button[0].click().run()
     assert not app.exception
-    assert len(offline_fetch) == 4
-    assert [call[1] for call in offline_fetch[-2:]] == ["2021-04-01"] * 2
+    assert not app.error
+    assert len(app.metric) == 4
+    assert len(archives) == 2
+    assert offline_fetch[2:] == [
+        (TICKERS, "2021-04-01", "2025-08-01"),
+        ([BENCHMARK_TICKER], "2021-04-01", "2025-08-01"),
+    ]
+    assert any("2021-04-01 → 2025-07-31" in item.value for item in app.caption)
+    assert any("共通OOS期間" in item.value for item in app.caption)
+    report = verify_export_archive(archives[-1])
+    assert report["replay_verified"]
+
+
+def test_app_rejects_reversed_date_range_before_fetching(offline_fetch) -> None:
+    app = AppTest.from_file(str(APP_PATH), default_timeout=30).run()
+    app.date_input(key="selected_end_date").set_value(date(2020, 12, 31)).run()
+
+    assert not app.exception
+    assert "終了日は開始日以降" in app.error[0].value
+    assert not app.button
+    assert not offline_fetch
 
 
 @pytest.mark.parametrize("changed_argument", [0, 1, 2, 3])
