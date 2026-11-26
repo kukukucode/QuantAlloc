@@ -274,6 +274,32 @@ select {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+.analysis-notice {
+  border: 1px solid #765a36;
+  border-radius: 7px;
+  padding: 10px 13px;
+  margin-bottom: 16px;
+  color: #f2d4a1;
+  background: #2a2117;
+  font-size: 0.8rem;
+}
+.analysis-notice p {
+  margin: 0;
+}
+.analysis-notice p + p {
+  margin-top: 6px;
+}
+.allocation-history {
+  margin-bottom: 16px;
+  font-size: 0.8rem;
+}
+.allocation-history h3 {
+  margin-top: 0;
+}
+.allocation-history ul {
+  margin: 0;
+  padding-left: 1.25em;
+}
 .table-scroll {
   overflow-x: auto;
   border: 1px solid var(--line);

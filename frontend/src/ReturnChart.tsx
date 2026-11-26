@@ -57,7 +57,7 @@ export default function ReturnChart({ points, strategyLabel, benchmarkLabel }: R
         animation: false,
         maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
-        elements: { line: { borderWidth: 2 }, point: { radius: 0, hoverRadius: 3 } },
+        elements: { line: { borderWidth: 2 }, point: { radius: points.length === 1 ? 4 : 0, hoverRadius: 4 } },
         plugins: {
           legend: { labels: { color: '#c5d3d8', boxWidth: 22 }, align: 'start' },
           tooltip: {

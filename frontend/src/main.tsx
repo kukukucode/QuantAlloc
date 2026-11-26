@@ -19,6 +19,7 @@ const decimal = new Intl.NumberFormat('ja-JP', {
   maximumFractionDigits: 2,
 })
 const metricColumns = [
+  { key: 'period_return', label: '期間リターン' },
   { key: 'cagr', label: '年率リターン' },
   { key: 'volatility', label: '年率ボラティリティ' },
   { key: 'sharpe', label: 'シャープレシオ' },
@@ -29,16 +30,25 @@ type AnalysisForm = Omit<AnalysisRequest, 'tickers'> & { tickersByMarket: Record
 
 function formatMetric(row: PerformanceRow, key: (typeof metricColumns)[number]['key']) {
   const value = row[key]
-  if (value === null) return '算出不可'
+  if (value === null) return '—'
   return (key === 'sharpe' ? decimal : percent).format(value)
 }
 
 function Result({ result }: { result: AnalysisResponse }) {
-  const { evaluation, performance, cumulative_returns: points } = result
+  const { evaluation, performance, cumulative_returns: points, requested } = result
   const strategyLabel = performance[0]?.label ?? result.requested.strategy
+  const entries = Object.entries(result.entry_dates).sort((left, right) => left[1].localeCompare(right[1]))
+  const portfolioDates = new Map<string, string[]>()
+  for (const [symbol, day] of entries) {
+    const group = portfolioDates.get(day) ?? []
+    group.push(symbol)
+    portfolioDates.set(day, group)
+  }
+  let assetCount = 0
 
   return (
     <>
+      <p className="muted">指定期間 {requested.start_date} 〜 {requested.end_date}</p>
       <p className="evaluation">
         共通評価期間{' '}
         <strong>
@@ -46,6 +56,34 @@ function Result({ result }: { result: AnalysisResponse }) {
         </strong>
         <span>{evaluation.observations}営業日</span>
       </p>
+      {(!result.annualized_metrics_available || result.applied_strategy !== requested.strategy || result.unavailable_tickers.length > 0) && (
+        <div className="analysis-notice">
+          {result.applied_strategy !== requested.strategy && (
+            <p>選んだ戦略の学習履歴が足りないため、Equal Weightの結果を参考表示しています。</p>
+          )}
+          {evaluation.observations < result.minimum_annualized_observations && (
+            <p>共通評価が{result.minimum_annualized_observations}営業日未満のため、年率指標とシャープレシオは表示しません。期間リターンと最大ドローダウンはこの期間内の参考値です。</p>
+          )}
+          {result.skipped_sessions > 0 && (
+            <p>一部の株価が欠けていた{result.skipped_sessions}営業日は評価日から除き、年率指標は表示しません。</p>
+          )}
+          {result.unavailable_tickers.length > 0 && (
+            <p>指定期間に組み入れに必要な株価がそろわなかった銘柄：{result.unavailable_tickers.join('、')}</p>
+          )}
+        </div>
+      )}
+      {portfolioDates.size > 1 && (
+        <div className="allocation-history">
+          <h3>銘柄の組み入れ</h3>
+          <ul>
+            {[...portfolioDates].map(([day, symbols], index) => {
+              assetCount += symbols.length
+              return <li key={day}>{day} {index > 0 && `${symbols.join('、')}を追加し、`}{assetCount}銘柄・各{percent.format(1 / assetCount)}</li>
+            })}
+          </ul>
+          <p className="muted">新しい銘柄は最初の終値を確認した後、次の評価日に組み入れます。</p>
+        </div>
+      )}
       <div className="table-scroll" tabIndex={0} aria-label="成績の比較表">
         <table>
           <thead>
@@ -166,7 +204,7 @@ function App() {
           </span>
           QuantAlloc
         </div>
-        <span className="version">v0.29</span>
+        <span className="version">v0.30</span>
       </header>
       <main>
         <div className="intro">
@@ -224,25 +262,25 @@ function App() {
                         </option>
                       ))}
                     </select>
-                    <label htmlFor="start">取得開始日</label>
+                    <label htmlFor="start">評価開始日</label>
                     <input
                       id="start"
                       type="date"
                       required
                       max={config.maximum_date}
                       value={form.start_date}
-                      onChange={(event) => updateForm({ start_date: event.target.value })}
+                      onInput={(event) => updateForm({ start_date: event.currentTarget.value })}
                     />
-                    <label htmlFor="end">取得終了日</label>
+                    <label htmlFor="end">評価終了日</label>
                     <input
                       id="end"
                       type="date"
                       required
                       max={config.maximum_date}
                       value={form.end_date}
-                      onChange={(event) => updateForm({ end_date: event.target.value })}
+                      onInput={(event) => updateForm({ end_date: event.currentTarget.value })}
                     />
-                    <p className="field-note">開始日・終了日ともに取得期間に含みます。</p>
+                    <p className="field-note">日次リターンの評価は両端を含みます。学習が必要な戦略は開始日より前の株価も取得します。</p>
                     <button className="primary" type="submit">
                       {busy ? '分析中…' : '分析を実行'}
                     </button>
@@ -259,7 +297,7 @@ function App() {
                   </div>
                   <div>
                     <dt>学習期間</dt>
-                    <dd>{config.estimation_window}営業日</dd>
+                    <dd>{form.strategy === 'equal_weight' ? '不要' : `${config.estimation_window}営業日`}</dd>
                   </div>
                   <div>
                     <dt>リバランス間隔</dt>

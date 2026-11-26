@@ -85,6 +85,8 @@ def _validate_backtest_inputs(
     risk_free_rate: float = 0.0,
     transaction_cost_rate: float = 0.001,
     covariance_method: str = "sample",
+    *,
+    include_partial_period: bool = False,
 ) -> pd.DataFrame:
     """Validate and copy inputs for a walk-forward backtest."""
     if strategy not in VALID_STRATEGIES:
@@ -98,7 +100,9 @@ def _validate_backtest_inputs(
         int,
     ):
         raise ValueError("estimation_window must be an integer of at least 2")
-    if estimation_window < 2:
+    if estimation_window < 2 and not (
+        estimation_window == 0 and strategy == "equal_weight" and include_partial_period
+    ):
         raise ValueError("estimation_window must be an integer of at least 2")
 
     if isinstance(holding_period, bool) or not isinstance(holding_period, int):
@@ -126,7 +130,9 @@ def _validate_backtest_inputs(
     if asset_returns.columns.has_duplicates:
         raise ValueError("asset_returns columns must be unique")
 
-    minimum_observations = estimation_window + holding_period
+    minimum_observations = estimation_window + (
+        1 if include_partial_period else holding_period
+    )
     if len(asset_returns) < minimum_observations:
         raise ValueError(
             "asset_returns must contain at least "
@@ -226,6 +232,8 @@ def walk_forward_backtest(
     covariance_method: str = "sample",
     *,
     black_litterman: BlackLittermanConfig | BlackLittermanProvider | None = None,
+    include_partial_period: bool = False,
+    asset_entry_dates: dict[str, pd.Timestamp] | None = None,
     _covariance_cache: dict[tuple[int, int, str], pd.DataFrame] | None = None,
 ) -> BacktestResult:
     """Run a rolling, fixed-holding-period out-of-sample backtest.
@@ -237,6 +245,8 @@ def walk_forward_backtest(
     Covariance and the implied prior are re-estimated at every rebalance.
     A rebalance is rejected if its transaction costs consume the full
     portfolio value or more; the net portfolio must remain investable.
+    With entry dates, zero-training Equal Weight also rebalances when an
+    asset first becomes eligible. Dates refer to the end of its first return.
     """
     validated = _validate_backtest_inputs(
         asset_returns,
@@ -246,7 +256,18 @@ def walk_forward_backtest(
         risk_free_rate,
         transaction_cost_rate,
         covariance_method,
+        include_partial_period=include_partial_period,
     )
+    if asset_entry_dates is not None and (
+        strategy != "equal_weight"
+        or estimation_window != 0
+        or set(asset_entry_dates) != set(validated.columns)
+        or any(day not in validated.index for day in asset_entry_dates.values())
+        or min(asset_entry_dates.values(), default=pd.NaT) != validated.index[0]
+    ):
+        raise ValueError(
+            "asset entry dates require zero-training Equal Weight and valid return dates"
+        )
     if strategy == "black_litterman":
         if not isinstance(black_litterman, BlackLittermanConfig) and not callable(
             black_litterman
@@ -268,18 +289,28 @@ def walk_forward_backtest(
     transaction_cost_values: list[float] = []
     previous_ending_weights: pd.Series | None = None
 
-    final_test_start = len(validated) - holding_period
-    for test_start_position in range(
-        estimation_window,
-        final_test_start + 1,
-        holding_period,
-    ):
+    final_test_start = len(validated) - (1 if include_partial_period else holding_period)
+    period_starts = list(range(estimation_window, final_test_start + 1, holding_period))
+    if asset_entry_dates is not None:
+        entry_positions = validated.index.get_indexer(asset_entry_dates.values())
+        period_starts = sorted(set(period_starts).union(entry_positions))
+    next_starts = [*period_starts[1:], len(validated)]
+    for test_start_position, next_start in zip(period_starts, next_starts):
         train_start_position = test_start_position - estimation_window
-        test_end_position = test_start_position + holding_period
+        test_end_position = min(test_start_position + holding_period, next_start)
 
         training = validated.iloc[train_start_position:test_start_position]
         test = validated.iloc[test_start_position:test_end_position]
-        if _covariance_cache is not None and strategy != "equal_weight":
+        if asset_entry_dates is not None:
+            eligible = [
+                symbol
+                for symbol in validated.columns
+                if asset_entry_dates[symbol] <= test.index[0]
+            ]
+            weights = pd.Series(1.0 / len(eligible), index=eligible, name=strategy).reindex(
+                validated.columns, fill_value=0.0
+            )
+        elif _covariance_cache is not None and strategy != "equal_weight":
             # A fresh cache is shared only across runs on the same return data.
             # Position and estimator identify the exact training window.
             key = (train_start_position, test_start_position, covariance_method)
@@ -339,8 +370,8 @@ def walk_forward_backtest(
         period_rows.append(
             {
                 "rebalance": rebalance_date,
-                "train_start": training.index[0],
-                "train_end": training.index[-1],
+                "train_start": training.index[0] if not training.empty else pd.NaT,
+                "train_end": training.index[-1] if not training.empty else pd.NaT,
                 "test_start": test.index[0],
                 "test_end": test.index[-1],
             }
