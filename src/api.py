@@ -2,11 +2,10 @@
 
 import logging
 import math
-import re
 from datetime import date, timedelta
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
 
 from src.dashboard import run_sample_analysis
@@ -19,13 +18,19 @@ from src.sample_config import (
     START_DATE,
     TICKERS,
 )
+from src.symbol_search import (
+    JP_TICKER,
+    US_TICKER,
+    SymbolMatch,
+    normalize_symbol_query,
+    search_japanese_symbols,
+    search_us_symbols,
+)
 
 logger = logging.getLogger(__name__)
-app = FastAPI(title="QuantAlloc", version="0.28")
+app = FastAPI(title="QuantAlloc", version="0.29")
 MarketId = Literal["jp", "us"]
 MAX_TICKERS = 15
-JP_TICKER = re.compile(r"[0-9][0-9A-Z][0-9][0-9A-Z]")
-US_TICKER = re.compile(r"[A-Z][A-Z0-9]{0,5}(?:-[A-Z])?")
 
 
 class MarketConfig(BaseModel):
@@ -161,6 +166,24 @@ def configuration() -> AnalysisConfig:
         transaction_cost_bps=round(settings.transaction_cost_rate * 10_000),
         maximum_date=date.today(),
     )
+
+
+@app.get("/api/symbols")
+def search_symbols(
+    market: MarketId, q: Annotated[str, Query(min_length=2, max_length=80)]
+) -> list[SymbolMatch]:
+    query = normalize_symbol_query(q)
+    if len(query) < 2:
+        raise HTTPException(422, "検索語は2文字以上入力してください。")
+    try:
+        if market == "jp":
+            return search_japanese_symbols(query)
+        return search_us_symbols(query)
+    except Exception as exc:
+        logger.warning("Symbol search failed for market %s: %s", market, exc)
+        raise HTTPException(
+            502, "銘柄検索に接続できませんでした。時間をおいて再度お試しください。"
+        ) from exc
 
 
 @app.post("/api/analysis")

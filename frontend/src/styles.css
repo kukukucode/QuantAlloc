@@ -117,13 +117,11 @@ label {
 }
 input,
 select,
-textarea,
 button {
   font: inherit;
 }
 input,
-select,
-textarea {
+select {
   display: block;
   min-height: 42px;
   width: 100%;
@@ -135,9 +133,6 @@ textarea {
   padding: 8px;
   margin-bottom: 14px;
 }
-textarea {
-  resize: vertical;
-}
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
@@ -145,6 +140,89 @@ textarea {
 .field-note {
   font-size: 0.75rem;
   margin: -4px 0 16px;
+}
+.symbol-picker > label {
+  display: block;
+}
+.symbol-status {
+  margin: 0 0 12px;
+}
+.symbol-matches,
+.symbol-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.symbol-matches {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+.symbol-matches li + li {
+  border-top: 1px solid var(--line);
+}
+.symbol-option {
+  display: grid;
+  width: 100%;
+  gap: 2px;
+  padding: 8px 10px;
+  text-align: left;
+  color: inherit;
+  background: #0e1a20;
+  border: 0;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.symbol-option span,
+.symbol-option small {
+  color: var(--muted);
+}
+.symbol-option:hover:not(:disabled),
+.symbol-option:focus-visible {
+  background: #203840;
+}
+.symbol-option:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.symbol-selection {
+  margin-bottom: 16px;
+}
+.symbol-selection-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.text-button {
+  color: var(--accent);
+  border: 0;
+  padding: 4px 0;
+  background: transparent;
+  cursor: pointer;
+}
+.symbol-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.symbol-chips button {
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #1b3038;
+  color: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.symbol-chips button:hover {
+  border-color: var(--accent);
 }
 .primary {
   width: 100%;

@@ -9,6 +9,7 @@ import {
   type MarketId,
   type PerformanceRow,
 } from './api'
+import SymbolPicker from './SymbolPicker'
 import './styles.css'
 
 const ReturnChart = lazy(() => import('./ReturnChart'))
@@ -24,7 +25,7 @@ const metricColumns = [
   { key: 'max_drawdown', label: '最大ドローダウン' },
 ] as const
 
-type AnalysisForm = Omit<AnalysisRequest, 'tickers'> & { tickerInput: string }
+type AnalysisForm = Omit<AnalysisRequest, 'tickers'> & { tickersByMarket: Record<MarketId, string[]> }
 
 function formatMetric(row: PerformanceRow, key: (typeof metricColumns)[number]['key']) {
   const value = row[key]
@@ -106,7 +107,14 @@ function App() {
       .then((data) => {
         const { tickers, ...defaults } = data.defaults
         setConfig(data)
-        setForm({ ...defaults, tickerInput: tickers.join(', ') })
+        setForm({
+          ...defaults,
+          tickersByMarket: {
+            jp: data.markets.jp.default_tickers,
+            us: data.markets.us.default_tickers,
+            [defaults.market]: tickers,
+          },
+        })
       })
       .catch((reason: unknown) => {
         if (!controller.signal.aborted) setConfigError(errorMessage(reason))
@@ -130,10 +138,10 @@ function App() {
       return
     }
 
-    const { tickerInput, ...request } = form
-    const tickers = tickerInput.split(/[\s,、，]+/).filter(Boolean)
+    const { tickersByMarket, ...request } = form
+    const tickers = tickersByMarket[request.market]
     if (tickers.length === 0 || tickers.length > config.max_tickers) {
-      setError(`銘柄は1〜${config.max_tickers}件入力してください。`)
+      setError(`銘柄を1〜${config.max_tickers}件選択してください。`)
       return
     }
 
@@ -158,7 +166,7 @@ function App() {
           </span>
           QuantAlloc
         </div>
-        <span className="version">v0.28</span>
+        <span className="version">v0.29</span>
       </header>
       <main>
         <div className="intro">
@@ -187,13 +195,7 @@ function App() {
                     <select
                       id="market"
                       value={form.market}
-                      onChange={(event) => {
-                        const marketId = event.target.value as MarketId
-                        updateForm({
-                          market: marketId,
-                          tickerInput: config.markets[marketId].default_tickers.join(', '),
-                        })
-                      }}
+                      onChange={(event) => updateForm({ market: event.target.value as MarketId })}
                     >
                       {Object.entries(config.markets).map(([id, item]) => (
                         <option key={id} value={id}>
@@ -201,22 +203,15 @@ function App() {
                         </option>
                       ))}
                     </select>
-                    <label htmlFor="tickers">銘柄コード</label>
-                    <textarea
-                      id="tickers"
-                      required
-                      rows={3}
-                      maxLength={240}
-                      value={form.tickerInput}
-                      spellCheck={false}
-                      autoCapitalize="characters"
-                      aria-describedby="ticker-note"
-                      onChange={(event) => updateForm({ tickerInput: event.target.value })}
+                    <SymbolPicker
+                      key={form.market}
+                      market={form.market}
+                      selected={form.tickersByMarket[form.market]}
+                      limit={config.max_tickers}
+                      onChange={(symbols) => updateForm({
+                        tickersByMarket: { ...form.tickersByMarket, [form.market]: symbols },
+                      })}
                     />
-                    <p className="field-note" id="ticker-note">
-                      1〜{config.max_tickers}銘柄をカンマ・空白・改行で区切ります。
-                      {form.market === 'jp' ? '例 7203、6758、130A' : '例 AAPL、MSFT、BRK-B'}
-                    </p>
                     <label htmlFor="strategy">戦略</label>
                     <select
                       id="strategy"
