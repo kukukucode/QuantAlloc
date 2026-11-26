@@ -29,6 +29,7 @@ export type AnalysisConfig = {
 
 export type PerformanceRow = {
   label: string
+  period_return: number
   cagr: number | null
   volatility: number | null
   sharpe: number | null
@@ -37,10 +38,16 @@ export type PerformanceRow = {
 
 export type AnalysisResponse = {
   requested: AnalysisRequest
+  applied_strategy: string
   benchmark_label: string
   benchmark_ticker: string
   currency: string
   evaluation: { start_date: string; end_date: string; observations: number }
+  annualized_metrics_available: boolean
+  minimum_annualized_observations: number
+  entry_dates: Record<string, string>
+  unavailable_tickers: string[]
+  skipped_sessions: number
   performance: PerformanceRow[]
   cumulative_returns: { date: string; strategy: number; benchmark: number }[]
 }

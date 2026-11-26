@@ -8,6 +8,8 @@ def fetch_prices(
     tickers: list[str],
     start: str,
     end: str | None = None,
+    *,
+    fill_missing: bool = True,
 ) -> pd.DataFrame:
     """Fetch adjusted closing prices from Yahoo Finance.
 
@@ -15,6 +17,8 @@ def fetch_prices(
         tickers: Yahoo Finance ticker symbols.
         start: Inclusive start date in YYYY-MM-DD format.
         end: Exclusive end date in YYYY-MM-DD format. Defaults to today.
+        fill_missing: Carry forward past closes and trim to common coverage.
+            When false, retain missing quotes for coverage-aware analysis.
 
     Returns:
         A date-indexed DataFrame with one adjusted-price column per ticker.
@@ -40,6 +44,12 @@ def fetch_prices(
         threads=False,
     )
     if raw_data.empty:
+        if not fill_missing:
+            return pd.DataFrame(
+                index=pd.DatetimeIndex([], name="Date"),
+                columns=normalized_tickers,
+                dtype=float,
+            )
         raise ValueError("no price data was returned")
 
     try:
@@ -55,17 +65,21 @@ def fetch_prices(
     missing_tickers = [
         ticker for ticker in normalized_tickers if ticker not in prices.columns
     ]
-    if missing_tickers:
+    if missing_tickers and fill_missing:
         missing = ", ".join(missing_tickers)
         raise ValueError(f"no closing prices were returned for: {missing}")
 
-    prices = prices.loc[:, normalized_tickers]
+    prices = prices.reindex(columns=normalized_tickers)
     prices.index = pd.to_datetime(prices.index)
     prices = prices[~prices.index.duplicated(keep="last")].sort_index()
-    prices = prices.apply(pd.to_numeric, errors="coerce").ffill().dropna(how="any")
+    prices = prices.apply(pd.to_numeric, errors="coerce")
+    prices.index.name = "Date"
+    if not fill_missing:
+        return prices
+
+    prices = prices.ffill().dropna(how="any")
 
     if prices.empty:
         raise ValueError("no complete price observations were returned")
 
-    prices.index.name = "Date"
     return prices

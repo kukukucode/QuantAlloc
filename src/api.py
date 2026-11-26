@@ -8,9 +8,15 @@ from typing import Annotated, Literal
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
 
-from src.dashboard import run_sample_analysis
 from src.dashboard_settings import DashboardSettings
 from src.data_provider import fetch_prices
+from src.metrics import (
+    annualized_volatility,
+    cagr,
+    max_drawdown,
+    sharpe_ratio,
+    wealth_index,
+)
 from src.sample_config import (
     ANALYSIS_STRATEGY_LABELS,
     BENCHMARK_TICKER,
@@ -26,11 +32,13 @@ from src.symbol_search import (
     search_japanese_symbols,
     search_us_symbols,
 )
+from src.web_analysis import NoEvaluationData, run_web_analysis
 
 logger = logging.getLogger(__name__)
-app = FastAPI(title="QuantAlloc", version="0.29")
+app = FastAPI(title="QuantAlloc", version="0.30")
 MarketId = Literal["jp", "us"]
 MAX_TICKERS = 15
+MIN_ANNUALIZED_OBSERVATIONS = 126
 
 
 class MarketConfig(BaseModel):
@@ -93,6 +101,7 @@ class EvaluationWindow(DateRange):
 
 class PerformanceRow(BaseModel):
     label: str
+    period_return: FiniteFloat
     cagr: FiniteFloat | None
     volatility: FiniteFloat | None
     sharpe: FiniteFloat | None
@@ -107,10 +116,16 @@ class ReturnPoint(BaseModel):
 
 class AnalysisResponse(BaseModel):
     requested: AnalysisRequest
+    applied_strategy: str
     benchmark_label: str
     benchmark_ticker: str
     currency: str
     evaluation: EvaluationWindow
+    annualized_metrics_available: bool
+    minimum_annualized_observations: int
+    entry_dates: dict[str, date]
+    unavailable_tickers: list[str]
+    skipped_sessions: int
     performance: list[PerformanceRow]
     cumulative_returns: list[ReturnPoint]
 
@@ -196,64 +211,81 @@ def analyze(request: AnalysisRequest) -> AnalysisResponse:
 
     market = MARKETS[request.market]
     tickers = _normalize_tickers(request, market)
-    start = request.start_date.isoformat()
+    lookback_days = 31 if request.strategy == "equal_weight" else 1095
+    start = date.fromordinal(
+        max(1, request.start_date.toordinal() - lookback_days)
+    ).isoformat()
     end_exclusive = (request.end_date + timedelta(days=1)).isoformat()
     try:
-        asset_prices = fetch_prices(tickers, start, end_exclusive)
-        benchmark_prices = fetch_prices([market.benchmark_ticker], start, end_exclusive)
+        asset_prices = fetch_prices(tickers, start, end_exclusive, fill_missing=False)
+        benchmark_prices = fetch_prices(
+            [market.benchmark_ticker], start, end_exclusive, fill_missing=False
+        )
     except (ValueError, RuntimeError, OSError) as exc:
         logger.warning("Price retrieval failed: %s", exc)
         raise HTTPException(
             502, "株価を取得できませんでした。銘柄コードと取得期間を確認してください。"
         ) from exc
 
-    settings = DashboardSettings()
-    minimum_prices = settings.minimum_price_observations
-    if len(asset_prices) < minimum_prices:
+    try:
+        result = run_web_analysis(
+            asset_prices,
+            benchmark_prices[market.benchmark_ticker],
+            request.strategy,
+            request.start_date,
+            request.end_date,
+            DashboardSettings(),
+        )
+    except NoEvaluationData as exc:
         raise HTTPException(
             422,
-            f"株価は最低{minimum_prices}営業日分必要です。"
-            f"取得できたのは{len(asset_prices)}営業日分でした。",
-        )
-
-    try:
-        result = run_sample_analysis(
-            asset_prices,
-            benchmark_prices,
-            request.strategy,
-            settings=settings,
-            benchmark_ticker=market.benchmark_ticker,
-            benchmark_label=market.benchmark_label,
-        )
+            "指定期間に比較できる日次リターンがありません。銘柄の取引開始日や株価の取得状況を確認してください。",
+        ) from exc
     except (ValueError, RuntimeError) as exc:
         logger.warning("Analysis failed: %s", exc)
         raise HTTPException(
             422, "指定した条件で分析できませんでした。期間や戦略を変更してください。"
         ) from exc
 
-    summary = result.performance
+    returns = result.returns
+    show_annualized = (
+        len(returns) >= MIN_ANNUALIZED_OBSERVATIONS and result.skipped_sessions == 0
+    )
+    cumulative = returns.apply(wealth_index) - 1.0
+    labels = (ANALYSIS_STRATEGY_LABELS[result.strategy], market.benchmark_label)
     return AnalysisResponse(
         requested=request.model_copy(update={"tickers": tickers}),
+        applied_strategy=result.strategy,
         benchmark_label=market.benchmark_label,
         benchmark_ticker=market.benchmark_ticker,
         currency=market.currency,
         evaluation=EvaluationWindow(
-            start_date=summary.attrs["start_date"].date(),
-            end_date=summary.attrs["end_date"].date(),
-            observations=summary.attrs["observations"],
+            start_date=returns.index[0].date(),
+            end_date=returns.index[-1].date(),
+            observations=len(returns),
         ),
+        annualized_metrics_available=show_annualized,
+        minimum_annualized_observations=MIN_ANNUALIZED_OBSERVATIONS,
+        entry_dates={ticker: day.date() for ticker, day in result.entry_dates.items()},
+        unavailable_tickers=result.unavailable,
+        skipped_sessions=result.skipped_sessions,
         performance=[
             PerformanceRow(
                 label=label,
-                cagr=_finite_or_none(row.cagr),
-                volatility=_finite_or_none(row.volatility),
-                sharpe=_finite_or_none(row.sharpe),
-                max_drawdown=_finite_or_none(row.max_drawdown),
+                period_return=float(cumulative[column].iloc[-1]),
+                cagr=_finite_or_none(cagr(series)) if show_annualized else None,
+                volatility=_finite_or_none(annualized_volatility(series))
+                if show_annualized
+                else None,
+                sharpe=_finite_or_none(sharpe_ratio(series))
+                if show_annualized
+                else None,
+                max_drawdown=_finite_or_none(max_drawdown(series)),
             )
-            for label, row in summary.iterrows()
+            for label, (column, series) in zip(labels, returns.items())
         ],
         cumulative_returns=[
             ReturnPoint(date=day.date(), strategy=strategy, benchmark=benchmark)
-            for day, strategy, benchmark in result.cumulative_returns.itertuples()
+            for day, strategy, benchmark in cumulative.itertuples()
         ],
     )
