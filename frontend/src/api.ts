@@ -1,5 +1,7 @@
 export type MarketId = 'jp' | 'us'
 
+export type SymbolMatch = { symbol: string; name: string }
+
 export type AnalysisRequest = {
   start_date: string
   end_date: string
@@ -65,6 +67,11 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function fetchConfig(signal: AbortSignal) {
   return requestJson<AnalysisConfig>('/api/config', { signal })
+}
+
+export function searchSymbols(market: MarketId, query: string, signal: AbortSignal) {
+  const params = new URLSearchParams({ market, q: query })
+  return requestJson<SymbolMatch[]>(`/api/symbols?${params}`, { signal })
 }
 
 export function analyze(request: AnalysisRequest) {
