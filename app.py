@@ -1,4 +1,6 @@
-"""Streamlit strategy selection with a fixed asset universe and settings."""
+"""Streamlit portfolio analysis for a fixed asset universe."""
+
+from datetime import date, timedelta
 
 import pandas as pd
 import streamlit as st
@@ -34,6 +36,20 @@ def load_sample_prices(
         fetch_prices(list(tickers), start, end),
         fetch_prices([benchmark_ticker], start, end),
     )
+
+
+def load_prices_for_analysis(
+    price_request: tuple[tuple[str, ...], str, str, str], minimum_prices: int
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Check that asset prices cover training and one full holding period."""
+    asset_prices, benchmark_prices = load_sample_prices(*price_request)
+    if len(asset_prices) < minimum_prices:
+        raise ValueError(
+            f"株価データは{minimum_prices}営業日分必要ですが、"
+            f"{len(asset_prices)}営業日分しか取得できませんでした。"
+            "取得期間を広げるか、学習期間・リバランス頻度を短くしてください。"
+        )
+    return asset_prices, benchmark_prices
 
 
 def display_analysis(result: SampleAnalysis) -> None:
@@ -417,7 +433,7 @@ def display_export(
 def main() -> None:
     st.set_page_config(page_title="QuantAlloc", page_icon="📊", layout="wide")
     st.title("QuantAlloc")
-    st.caption("v0.25 HRP & Parallel Sensitivity")
+    st.caption("v0.26 Analysis Date Range")
     st.write(
         "既存10銘柄・選択した条件で配分戦略を選び、TOPIXとWalk-Forward成績を比較します。"
     )
@@ -430,6 +446,26 @@ def main() -> None:
             key="selected_strategy",
         )
         st.caption("設定を変更すると、前回の分析結果は非表示になります。")
+
+        default_end = date.fromisoformat(END_DATE) - timedelta(days=1)
+        date_limits = {
+            "min_value": date(1900, 1, 1),
+            "max_value": max(date.today(), default_end),
+        }
+        start = st.date_input(
+            "株価取得の開始日",
+            date.fromisoformat(START_DATE),
+            **date_limits,
+            format="YYYY-MM-DD",
+            key="selected_start_date",
+        )
+        end = st.date_input(
+            "株価取得の終了日",
+            default_end,
+            **date_limits,
+            format="YYYY-MM-DD",
+            key="selected_end_date",
+        )
 
         training_options = (252, 378, 504)
         holding_options = (21, 63, 126, 252)
@@ -473,12 +509,21 @@ def main() -> None:
         st.write(f"Benchmark: {BENCHMARK_TICKER}（TOPIX ETF）")
         st.write("Covariance: Sample（最適化戦略）")
         st.write("Risk-free rate: 0% / No short / No leverage")
-        st.caption(f"取得期間: {START_DATE} ～ {END_DATE}（終了日を含まない）")
         st.subheader("対象銘柄")
         st.dataframe(pd.DataFrame({"Ticker": TICKERS}), hide_index=True)
 
     st.caption("価格データは1時間キャッシュします。初回配分の売買コストは0です。")
-    price_request = (tuple(TICKERS), BENCHMARK_TICKER, START_DATE, END_DATE)
+    # Yahoo Finance and ZIP metadata use an exclusive end date.
+    price_request = (
+        None
+        if start is None or end is None
+        else (
+            tuple(TICKERS),
+            BENCHMARK_TICKER,
+            start.isoformat(),
+            (end + timedelta(days=1)).isoformat(),
+        )
+    )
     analysis_request = (price_request, strategy, settings)
     comparison_request = (price_request, settings)
     if st.session_state.get("sample_analysis_request") != analysis_request:
@@ -494,6 +539,17 @@ def main() -> None:
     ):
         st.session_state.pop("sample_export_inputs", None)
 
+    if price_request is None:
+        st.error("株価取得の開始日と終了日を入力してください。")
+        return
+    if start > end:
+        st.error("終了日は開始日以降にしてください。")
+        return
+
+    minimum_prices = settings.minimum_price_observations
+    st.caption(f"株価取得期間: {start} → {end}（両端を含む）")
+    st.caption(f"現在の設定では株価データが最低{minimum_prices}営業日分必要です。")
+
     if st.button("分析を実行", type="primary"):
         # Never present a previous successful result after a failed new run.
         st.session_state.pop("sample_analysis", None)
@@ -502,7 +558,9 @@ def main() -> None:
         st.session_state.pop("sample_export_inputs", None)
         try:
             with st.spinner("価格データを取得し、分析しています…"):
-                asset_prices, benchmark_prices = load_sample_prices(*price_request)
+                asset_prices, benchmark_prices = load_prices_for_analysis(
+                    price_request, minimum_prices
+                )
                 if settings == DashboardSettings():
                     analysis = run_sample_analysis(
                         asset_prices, benchmark_prices, strategy
@@ -531,7 +589,9 @@ def main() -> None:
         st.session_state.pop("sample_export_inputs", None)
         try:
             with st.spinner("4戦略をバックテストしています…"):
-                asset_prices, benchmark_prices = load_sample_prices(*price_request)
+                asset_prices, benchmark_prices = load_prices_for_analysis(
+                    price_request, minimum_prices
+                )
                 st.session_state["sample_comparison"] = run_strategy_comparison(
                     asset_prices, benchmark_prices, settings=settings
                 )
@@ -550,7 +610,9 @@ def main() -> None:
         st.session_state.pop("sample_export_inputs", None)
         try:
             with st.spinner("パラメータ感応度を分析しています…"):
-                asset_prices, benchmark_prices = load_sample_prices(*price_request)
+                asset_prices, benchmark_prices = load_prices_for_analysis(
+                    price_request, minimum_prices
+                )
                 if workers == 1:
                     sensitivity = run_sample_sensitivity(
                         asset_prices, strategy, settings=settings

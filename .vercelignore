@@ -1,0 +1,9 @@
+.venv/
+.pytest_cache/
+.ruff_cache/
+.env*
+__pycache__/
+frontend/node_modules/
+frontend/dist/
+outputs/
+rust/target/
