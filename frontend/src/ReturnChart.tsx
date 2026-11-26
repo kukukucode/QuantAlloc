@@ -24,9 +24,10 @@ Chart.register(
 type ReturnChartProps = {
   points: AnalysisResponse['cumulative_returns']
   strategyLabel: string
+  benchmarkLabel: string
 }
 
-export default function ReturnChart({ points, strategyLabel }: ReturnChartProps) {
+export default function ReturnChart({ points, strategyLabel, benchmarkLabel }: ReturnChartProps) {
   const canvas = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -44,7 +45,7 @@ export default function ReturnChart({ points, strategyLabel }: ReturnChartProps)
             backgroundColor: '#46ddba',
           },
           {
-            label: 'TOPIX',
+            label: benchmarkLabel,
             data: points.map((point) => point.benchmark * 100),
             borderColor: '#a9afff',
             backgroundColor: '#a9afff',
@@ -79,11 +80,15 @@ export default function ReturnChart({ points, strategyLabel }: ReturnChartProps)
     })
 
     return () => chart.destroy()
-  }, [points, strategyLabel])
+  }, [points, strategyLabel, benchmarkLabel])
 
   return (
     <div className="chart">
-      <canvas ref={canvas} role="img" aria-label={`${strategyLabel} とTOPIXの累積リターン`} />
+      <canvas
+        ref={canvas}
+        role="img"
+        aria-label={`${strategyLabel} と ${benchmarkLabel} の累積リターン`}
+      />
     </div>
   )
 }

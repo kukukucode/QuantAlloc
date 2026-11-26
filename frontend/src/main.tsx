@@ -6,6 +6,7 @@ import {
   type AnalysisConfig,
   type AnalysisRequest,
   type AnalysisResponse,
+  type MarketId,
   type PerformanceRow,
 } from './api'
 import './styles.css'
@@ -22,6 +23,8 @@ const metricColumns = [
   { key: 'sharpe', label: 'シャープレシオ' },
   { key: 'max_drawdown', label: '最大ドローダウン' },
 ] as const
+
+type AnalysisForm = Omit<AnalysisRequest, 'tickers'> & { tickerInput: string }
 
 function formatMetric(row: PerformanceRow, key: (typeof metricColumns)[number]['key']) {
   const value = row[key]
@@ -74,10 +77,15 @@ function Result({ result }: { result: AnalysisResponse }) {
           </p>
         }
       >
-        <ReturnChart points={points} strategyLabel={strategyLabel} />
+        <ReturnChart
+          points={points}
+          strategyLabel={strategyLabel}
+          benchmarkLabel={result.benchmark_label}
+        />
       </Suspense>
       <p className="muted">
-        戦略の成績は売買コスト控除後です。TOPIXは連動ETFの取得リターンを使用しています。
+        戦略は売買コスト控除後、比較先は連動ETF（{result.benchmark_ticker}）のリターンです。
+        いずれも{result.currency}ベースで計算しています。
       </p>
     </>
   )
@@ -85,18 +93,20 @@ function Result({ result }: { result: AnalysisResponse }) {
 
 function App() {
   const [config, setConfig] = useState<AnalysisConfig | null>(null)
-  const [form, setForm] = useState<AnalysisRequest | null>(null)
+  const [form, setForm] = useState<AnalysisForm | null>(null)
   const [configError, setConfigError] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<AnalysisResponse | null>(null)
+  const market = config && form ? config.markets[form.market] : null
 
   useEffect(() => {
     const controller = new AbortController()
     fetchConfig(controller.signal)
       .then((data) => {
+        const { tickers, ...defaults } = data.defaults
         setConfig(data)
-        setForm(data.defaults)
+        setForm({ ...defaults, tickerInput: tickers.join(', ') })
       })
       .catch((reason: unknown) => {
         if (!controller.signal.aborted) setConfigError(errorMessage(reason))
@@ -104,15 +114,15 @@ function App() {
     return () => controller.abort()
   }, [])
 
-  function updateField(key: keyof AnalysisRequest, value: string) {
-    setForm((current) => current && { ...current, [key]: value })
+  function updateForm(changes: Partial<AnalysisForm>) {
+    setForm((current) => current && { ...current, ...changes })
     setResult(null)
     setError('')
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!form || busy) return
+    if (!config || !form || busy) return
     setResult(null)
     setError('')
     if (form.start_date > form.end_date) {
@@ -120,9 +130,16 @@ function App() {
       return
     }
 
+    const { tickerInput, ...request } = form
+    const tickers = tickerInput.split(/[\s,、，]+/).filter(Boolean)
+    if (tickers.length === 0 || tickers.length > config.max_tickers) {
+      setError(`銘柄は1〜${config.max_tickers}件入力してください。`)
+      return
+    }
+
     setBusy(true)
     try {
-      setResult(await analyze(form))
+      setResult(await analyze({ ...request, tickers }))
     } catch (reason) {
       setError(errorMessage(reason))
     } finally {
@@ -141,12 +158,12 @@ function App() {
           </span>
           QuantAlloc
         </div>
-        <span className="version">v0.27</span>
+        <span className="version">v0.28</span>
       </header>
       <main>
         <div className="intro">
           <h1>ポートフォリオ分析</h1>
-          <p>日本株の配分戦略を、同じ評価期間のTOPIXと比較します。</p>
+          <p>日本株・米国株で配分戦略を検証し、各市場のベンチマークと比較します。</p>
         </div>
         <div className="workspace">
           <section className="panel settings" aria-labelledby="settings-title">
@@ -162,15 +179,49 @@ function App() {
               </div>
             )}
             {!config && !configError && <p role="status">設定を読み込んでいます…</p>}
-            {config && form && (
+            {config && form && market && (
               <>
                 <form onSubmit={submit}>
                   <fieldset disabled={busy}>
+                    <label htmlFor="market">市場</label>
+                    <select
+                      id="market"
+                      value={form.market}
+                      onChange={(event) => {
+                        const marketId = event.target.value as MarketId
+                        updateForm({
+                          market: marketId,
+                          tickerInput: config.markets[marketId].default_tickers.join(', '),
+                        })
+                      }}
+                    >
+                      {Object.entries(config.markets).map(([id, item]) => (
+                        <option key={id} value={id}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                    <label htmlFor="tickers">銘柄コード</label>
+                    <textarea
+                      id="tickers"
+                      required
+                      rows={3}
+                      maxLength={240}
+                      value={form.tickerInput}
+                      spellCheck={false}
+                      autoCapitalize="characters"
+                      aria-describedby="ticker-note"
+                      onChange={(event) => updateForm({ tickerInput: event.target.value })}
+                    />
+                    <p className="field-note" id="ticker-note">
+                      1〜{config.max_tickers}銘柄をカンマ・空白・改行で区切ります。
+                      {form.market === 'jp' ? '例 7203、6758、130A' : '例 AAPL、MSFT、BRK-B'}
+                    </p>
                     <label htmlFor="strategy">戦略</label>
                     <select
                       id="strategy"
                       value={form.strategy}
-                      onChange={(event) => updateField('strategy', event.target.value)}
+                      onChange={(event) => updateForm({ strategy: event.target.value })}
                     >
                       {Object.entries(config.strategies).map(([id, label]) => (
                         <option key={id} value={id}>
@@ -185,7 +236,7 @@ function App() {
                       required
                       max={config.maximum_date}
                       value={form.start_date}
-                      onChange={(event) => updateField('start_date', event.target.value)}
+                      onChange={(event) => updateForm({ start_date: event.target.value })}
                     />
                     <label htmlFor="end">取得終了日</label>
                     <input
@@ -194,7 +245,7 @@ function App() {
                       required
                       max={config.maximum_date}
                       value={form.end_date}
-                      onChange={(event) => updateField('end_date', event.target.value)}
+                      onChange={(event) => updateForm({ end_date: event.target.value })}
                     />
                     <p className="field-note">開始日・終了日ともに取得期間に含みます。</p>
                     <button className="primary" type="submit">
@@ -204,12 +255,12 @@ function App() {
                 </form>
                 <dl className="assumptions">
                   <div>
-                    <dt>対象</dt>
-                    <dd>日本株 {config.asset_count}銘柄</dd>
+                    <dt>現地通貨</dt>
+                    <dd>{market.currency}</dd>
                   </div>
                   <div>
                     <dt>ベンチマーク</dt>
-                    <dd>{config.benchmark_ticker}</dd>
+                    <dd>{market.benchmark_label} ({market.benchmark_ticker})</dd>
                   </div>
                   <div>
                     <dt>学習期間</dt>
@@ -228,7 +279,7 @@ function App() {
             )}
           </section>
           <section className="panel results" aria-labelledby="results-title" aria-busy={busy}>
-            <h2 id="results-title">TOPIXとの比較</h2>
+            <h2 id="results-title">{market ? `${market.benchmark_label}との比較` : '分析結果'}</h2>
             {error && (
               <p className="error" role="alert">
                 {error}

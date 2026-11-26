@@ -50,13 +50,15 @@ def run_sample_analysis(
     strategy: str = "equal_weight",
     *,
     settings: DashboardSettings | None = None,
+    benchmark_ticker: str = BENCHMARK_TICKER,
+    benchmark_label: str = "TOPIX",
 ) -> SampleAnalysis:
     """Reuse the existing engine and metrics on one common OOS period."""
     if strategy not in ANALYSIS_STRATEGY_LABELS:
         raise ValueError(f"unsupported dashboard strategy: {strategy}")
     config = _resolve_settings(settings)
     asset_returns = calculate_asset_returns(asset_prices)
-    benchmark_returns = calculate_benchmark_returns(benchmark_prices, BENCHMARK_TICKER)
+    benchmark_returns = calculate_benchmark_returns(benchmark_prices, benchmark_ticker)
     backtest = walk_forward_backtest(
         asset_returns,
         strategy,
@@ -66,7 +68,7 @@ def run_sample_analysis(
     )
     returns = {
         ANALYSIS_STRATEGY_LABELS[strategy]: backtest.net_returns,
-        "TOPIX": benchmark_returns,
+        benchmark_label: benchmark_returns,
     }
     aligned_returns = _align_strategy_returns(returns)
     tail_risk = pd.DataFrame.from_dict(
