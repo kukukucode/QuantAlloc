@@ -16,6 +16,11 @@ class DashboardSettings:
     holding_period: int = HOLDING_PERIOD
     transaction_cost_rate: float = TRANSACTION_COST_RATE
 
+    @property
+    def minimum_price_observations(self) -> int:
+        """Prices needed for training and a complete first holding period."""
+        return self.estimation_window + self.holding_period + 1
+
     def __post_init__(self) -> None:
         if (
             isinstance(self.estimation_window, bool)

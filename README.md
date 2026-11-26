@@ -3,7 +3,7 @@
 
 日本株の資産配分を最適化し、TOPIXと運用成績を比較する定量分析アプリです。Pythonを中心に、一部の計算をRustで高速化しています。
 
-開発版：v0.26（株価取得期間の指定）
+開発版：v0.27（React＋TypeScriptで単独分析を試作）
 
 ## 主な機能
 
@@ -35,6 +35,28 @@ python -m streamlit run app.py
 # テスト
 python -m pytest -q
 ```
+
+### React＋TypeScriptのローカル試作
+
+期間と戦略を選ぶと、Python APIがStreamlitと同じエンジンで計算し、TOPIXとの共通評価期間・成績・累積リターンを返します。4戦略比較・感応度分析・ZIP保存はStreamlitで利用できます。
+
+Node.js 20.19以降（20系）または22.12以降が必要です。Pythonの依存を上記の手順でインストールした上で、リポジトリのルートから2つのターミナルで起動します。
+
+```bash
+# ターミナル1
+python -m uvicorn src.api:app --host 127.0.0.1 --port 8000
+
+# ターミナル2
+cd frontend
+npm ci
+npm run dev
+```
+
+画面は http://127.0.0.1:5173/ 、API仕様は http://127.0.0.1:8000/docs です。フロントエンドは `npm run build` で型検査とビルドを実行できます。
+
+### Vercelでのデプロイ
+
+GitHubからQuantAllocをインポートし、Root Directoryをリポジトリのルート（`.`）にします。`vercel.json` の設定でReactをビルドし、FastAPIと同じURLで配信します。プレビューで画面を開き、「分析を実行」を押してTOPIXとの比較結果が表示されることを確認します。
 
 ## Rustによる高速化（任意）
 

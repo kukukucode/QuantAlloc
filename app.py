@@ -546,7 +546,7 @@ def main() -> None:
         st.error("終了日は開始日以降にしてください。")
         return
 
-    minimum_prices = settings.estimation_window + settings.holding_period + 1
+    minimum_prices = settings.minimum_price_observations
     st.caption(f"株価取得期間: {start} → {end}（両端を含む）")
     st.caption(f"現在の設定では株価データが最低{minimum_prices}営業日分必要です。")
 
